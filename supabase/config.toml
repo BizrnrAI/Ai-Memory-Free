@@ -1,0 +1,4 @@
+project_id = "ai-memory-free"
+
+[functions.memory]
+verify_jwt = false

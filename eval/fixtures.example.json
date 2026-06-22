@@ -1,0 +1,16 @@
+[
+  {
+    "query": "how do I deploy the memory edge function",
+    "expected_ids": [
+      "replace-with-memory-id-after-seeding"
+    ],
+    "notes": "Seed a deployment runbook memory, then replace this placeholder with its id."
+  },
+  {
+    "query": "why is generation delegated to the caller",
+    "expected_ids": [
+      "replace-with-memory-id-after-seeding"
+    ],
+    "notes": "Seed a design decision memory explaining model agnosticism and zero cost."
+  }
+]
