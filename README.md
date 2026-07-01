@@ -9,6 +9,7 @@ It gives any caller a persistent single source of truth (SSOT) memory with:
 - hybrid vector plus full-text ranking with Reciprocal Rank Fusion
 - transparent relevance scoring
 - provenance, namespaces, tags, supersession, and retirement
+- exact-duplicate prevention, plus optional semantic near-duplicate compaction
 - a tiny HTTPS API
 - a Model Context Protocol (MCP) server adapter
 - eval fixtures so retrieval quality can be measured
