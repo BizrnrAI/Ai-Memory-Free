@@ -17,6 +17,7 @@ Supabase Postgres
         | memories table
         | recall() RPC
         | bump_access(), retire_memory(), supersede_memory()
+        | compact_memories() (optional maintenance)
         v
 Ranked context bundle
 ```
@@ -67,7 +68,28 @@ effective_score =
 ```
 
 The API returns `rrf_norm`, `effective_score`, and `final_score` so callers can see
-why an item ranked.
+why an item ranked. Because scoring is transparent, a caller that wants a stricter
+result set can drop rows below a `final_score` floor itself — the service returns
+the ranked candidates; the caller brings the judgement.
+
+## Deduplication and Compaction
+
+Duplicate handling has two layers:
+
+1. **Exact duplicates** are prevented at write time. `content_hash` is a generated
+   `sha256(content)` column and `memories_namespace_hash_unique` makes
+   `(namespace, content_hash)` unique, so `remember` upserts identical content
+   instead of creating a second row.
+2. **Semantic near-duplicates** — the same fact phrased differently — are collapsed
+   by the optional `compact_memories()` maintenance function
+   (`0003_optional_compaction.sql`). Within a namespace it keeps the strongest row
+   (by `base_importance`, then usage, then age) and supersedes weaker near-duplicates
+   into it, reusing the existing lifecycle (`superseded_by` + `is_active = false`).
+   It is `dry_run` by default, fully recoverable, and opt-in — see
+   [OPERATIONS.md](OPERATIONS.md).
+
+This keeps recall from returning three phrasings of one memory without adding any
+new state to the data model.
 
 ## Model Agnosticism
 

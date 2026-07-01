@@ -54,7 +54,28 @@ that calls `health` every few days.
 - decay old unused lifecycle importance
 - retire low-value never-used rows after 90 days
 
-Small stores can skip this migration. Supersession is enough for many use cases.
+`0003_optional_compaction.sql` adds semantic near-duplicate compaction (the core
+schema already blocks exact duplicates via the `content_hash` unique index). It is
+safe by default — `compact_memories()` runs a dry run and only reports the pairs it
+would merge:
+
+```sql
+-- preview what would be merged (no writes)
+select * from public.compact_memories();
+
+-- tune the threshold / recency window / namespace if you like
+select * from public.compact_memories(0.94, interval '14 days', 'default');
+
+-- apply once you trust the pairs (weaker row is superseded into the stronger,
+-- recoverable via superseded_by, and already excluded from recall)
+select * from public.compact_memories(dry_run => false);
+```
+
+To run it automatically, uncomment the commented `ai-memory-free-compact` weekly
+cron at the bottom of `0003_optional_compaction.sql` after reviewing a dry run.
+
+Both maintenance migrations are optional. Small stores can skip them — supersession
+by the caller is enough for many use cases.
 
 ## Retrieval Eval
 
