@@ -1,6 +1,6 @@
 {
   "name": "ai-memory-free",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "A zero-cost, model-agnostic SSOT memory system with Supabase, pgvector, Edge Functions, evals, and MCP integration.",
   "license": "MIT",
@@ -9,10 +9,12 @@
     "packages/*"
   ],
   "scripts": {
-    "check": "npm run typecheck && npm run typecheck --workspaces --if-present && npm run eval:fixtures",
+    "check": "npm run typecheck && npm run typecheck --workspaces --if-present && npm test && npm run eval:fixtures",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test tests/*.test.ts",
     "eval": "tsx scripts/eval.ts",
     "eval:fixtures": "tsx scripts/validate-fixtures.ts",
+    "token:create": "tsx scripts/create-client-token.ts",
     "mcp": "npm --workspace @ai-memory-free/mcp-server run dev"
   },
   "devDependencies": {

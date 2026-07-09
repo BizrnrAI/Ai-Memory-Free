@@ -3,87 +3,194 @@
 ## Deploy
 
 ```bash
+npm ci
 supabase link --project-ref YOUR_PROJECT_REF
 supabase migration up --linked
-supabase secrets set MEMORY_TOKEN="$(openssl rand -base64 48)"
 supabase functions deploy memory --no-verify-jwt
 ```
 
-For controlled environments, review the SQL and apply migrations through your
-normal migration process. For a first free-tier personal install, the Supabase SQL
-editor is also acceptable.
+Apply schema changes through a controlled migration process for shared or
+production databases. Migration `0004` enables Supabase Vault and is required for
+scoped clients, encrypted secrets, audit events, rate limits, and cross-namespace
+supersession protection.
 
-## Smoke Test
+## Provision A Client
+
+```bash
+npm run token:create -- \
+  --name codex-platform \
+  --namespaces platform \
+  --permissions memory:read,memory:write
+```
+
+Store the printed token in the caller's secret store. Review and execute the
+printed SQL, which contains only the token hash.
+
+Recommended roles:
+
+```text
+read-only agent:       memory:read
+normal memory agent:   memory:read,memory:write
+secret inventory:      secrets:list
+secret consumer:       secrets:list,secrets:read
+secret operator:       secrets:admin
+```
+
+Avoid `*`. Use separate memory and secret tokens unless one human-operated process
+genuinely needs both.
+
+## Store And Read A Vault Secret
+
+Use the TypeScript client so plaintext is taken from the process environment rather
+than a shell argument or committed file:
+
+```ts
+import { MemoryClient } from '@ai-memory-free/client';
+
+const client = new MemoryClient();
+
+await client.storeSecret({
+  namespace: 'platform',
+  name: 'stripe.api-key',
+  secret: process.env.STRIPE_SECRET_KEY!,
+  description: 'Stripe server credential',
+  metadata: { owner: 'billing' },
+});
+
+const result = await client.getSecret({
+  namespace: 'platform',
+  name: 'stripe.api-key',
+});
+
+// Use result.secret.secret without logging it.
+```
+
+`secret_store` creates or rotates the Supabase Vault row. `secret_get` increments
+access metadata and writes an audit event. `secret_list` returns safe registry
+metadata only.
+
+## Smoke Test The Effect
+
+`health` proves reachability, not authorization effect. Verify identity, then write
+and recall a disposable memory in an authorized namespace:
 
 ```bash
 curl -s "$MEMORY_API_URL" \
   -H "authorization: Bearer $MEMORY_TOKEN" \
   -H "content-type: application/json" \
-  -d '{"action":"health"}'
+  -d '{"action":"whoami"}'
+
+curl -s "$MEMORY_API_URL" \
+  -H "authorization: Bearer $MEMORY_TOKEN" \
+  -H "content-type: application/json" \
+  -d '{"action":"remember","namespace":"platform","content":"smoke-test marker 2026-07-09","kind":"reference","tags":["smoke-test"]}'
+
+curl -s "$MEMORY_API_URL" \
+  -H "authorization: Bearer $MEMORY_TOKEN" \
+  -H "content-type: application/json" \
+  -d '{"action":"recall","namespace":"platform","query":"smoke test marker","track":false}'
 ```
 
-Expected:
+Retire the returned test ID after verifying it appears.
 
-```json
-{
-  "ok": true,
-  "service": "ai-memory-free"
-}
+## Rotate Or Revoke
+
+1. Generate and insert a replacement token hash.
+2. Verify `whoami`, remember, and recall using the replacement.
+3. Update the client secret store.
+4. Revoke the old row:
+
+```sql
+update public.memory_clients
+set revoked_at = now()
+where id = 'OLD_CLIENT_UUID';
 ```
+
+5. Verify the old token gets 401.
+
+Inspect active clients without exposing token hashes:
+
+```sql
+select id, name, token_prefix, allowed_namespaces, permissions,
+       expires_at, revoked_at, last_used_at, created_at
+from public.memory_clients
+order by created_at desc;
+```
+
+## Browser CORS
+
+Browser callers require an exact allowlist:
+
+```bash
+supabase secrets set MEMORY_ALLOWED_ORIGINS="https://app.example.com,https://admin.example.com"
+supabase functions deploy memory --no-verify-jwt
+```
+
+Do not use `*` for a production browser integration. Stdio MCP and server callers
+do not send an `Origin` header.
 
 ## Backups
 
-Supabase free tier does not include managed backups. Use `pg_dump`:
+Free Supabase projects do not include managed backups. Use an encrypted destination:
 
 ```bash
-pg_dump "$DATABASE_URL" --format=custom --file "backups/ai-memory-free-$(date +%Y%m%d).dump"
+pg_dump "$DATABASE_URL" --format=custom \
+  --file "backups/ai-memory-free-$(date +%Y%m%d).dump"
 ```
 
-Test restore into a throwaway project before you trust the backup plan.
+A backup is not proven until it restores into an isolated project and the restored
+memory can be recalled. Restrict backup access because memory, client-token hashes,
+and Vault-encrypted secrets are all sensitive. Vault ciphertext remains encrypted
+in the dump, but backup access should still be restricted.
 
-## Keepalive
+## Keepalive And Capacity
 
-Free Supabase projects can pause after inactivity. Normal use keeps the project
-awake. If the memory may sit idle, add a free scheduled workflow or external cron
-that calls `health` every few days.
+Free projects may pause after a low-activity week. A scheduled authenticated
+`health` request can keep a lightly used project active, but verify current vendor
+terms before relying on it.
 
-## Optional Maintenance
-
-`0002_optional_maintenance.sql` installs two `pg_cron` jobs:
-
-- decay old unused lifecycle importance
-- retire low-value never-used rows after 90 days
-
-`0003_optional_compaction.sql` adds semantic near-duplicate compaction (the core
-schema already blocks exact duplicates via the `content_hash` unique index). It is
-safe by default — `compact_memories()` runs a dry run and only reports the pairs it
-would merge:
+Monitor database size:
 
 ```sql
--- preview what would be merged (no writes)
+select pg_size_pretty(pg_database_size(current_database()));
+```
+
+`MEMORY_AUDIT_READS` defaults to false so reads do not consume audit space. Rate
+limit buckets automatically prune after two days.
+
+## Optional Memory Maintenance
+
+`0002_optional_maintenance.sql` installs decay and expiry cron jobs.
+
+`0003_optional_compaction.sql` provides dry-run semantic near-duplicate detection:
+
+```sql
 select * from public.compact_memories();
-
--- tune the threshold / recency window / namespace if you like
-select * from public.compact_memories(0.94, interval '14 days', 'default');
-
--- apply once you trust the pairs (weaker row is superseded into the stronger,
--- recoverable via superseded_by, and already excluded from recall)
+select * from public.compact_memories(0.94, interval '14 days', 'platform');
 select * from public.compact_memories(dry_run => false);
 ```
 
-To run it automatically, uncomment the commented `ai-memory-free-compact` weekly
-cron at the bottom of `0003_optional_compaction.sql` after reviewing a dry run.
-
-Both maintenance migrations are optional. Small stores can skip them — supersession
-by the caller is enough for many use cases.
+Review dry-run pairs before enabling writes or the commented weekly cron.
 
 ## Retrieval Eval
 
-After seeding memories, replace IDs in `eval/fixtures.example.json`, or create a
-private fixture file and set:
+Copy the example fixture to an ignored local path, seed real IDs, and run:
 
 ```bash
 MEMORY_EVAL_FIXTURES=eval/fixtures.local.json npm run eval
 ```
 
-The live eval calls recall with `track:false` so quality tests do not inflate usage.
+Ranking, embedding, chunking, or compaction changes require an updated eval or a
+written reason in `docs/DECISIONS.md`.
+
+## Incident Checklist
+
+If a client token leaks:
+
+1. Revoke its row immediately.
+2. Confirm the old token returns 401.
+3. Generate a replacement with no broader permissions than the old token.
+4. Inspect `memory_audit_log` for the client ID and exposure window.
+5. Review affected namespaces and rotate any Vault secrets that client could read.
+6. Search git history and logs for the leaked fragment; never paste the full token
+   into an issue or incident note.

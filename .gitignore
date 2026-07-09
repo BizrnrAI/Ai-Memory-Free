@@ -8,4 +8,6 @@ coverage/
 .supabase/
 *.log
 eval/results/
+eval/*.local.json
 backups/
+*.dump

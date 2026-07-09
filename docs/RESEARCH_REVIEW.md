@@ -1,6 +1,7 @@
 # Research Review
 
-Snapshot date: 2026-06-22.
+Comparison snapshot: 2026-06-22. Security and platform guidance refreshed:
+2026-07-09.
 
 This review compares Ai-Memory-Free against major open-source AI memory and
 context projects. The goal is not to clone the biggest framework. The goal is to
@@ -40,13 +41,18 @@ Honorable mentions:
 5. Eval gates are the difference between a memory system and a pile of embeddings.
 6. Model agnosticism requires discipline: the memory retrieves; the caller reasons.
 7. Free operation is easiest when the system has almost nothing to run.
+8. Shared memory needs caller identity, namespace grants, revocation, and audit;
+   one global token is a personal prototype, not a multi-agent security model.
+9. Caller authentication and recoverable platform secrets are different products.
+   Hash high-entropy caller tokens; encrypt recoverable credentials with a managed
+   key and keep them out of semantic recall.
 
 ## Resulting Architecture Choice
 
 Ai-Memory-Free implements the smallest useful A+ core:
 
 - Supabase Postgres plus pgvector
-- one `memories` table
+- one primary `memories` table plus small security-control tables
 - one Edge Function
 - in-edge free embeddings
 - hybrid vector plus FTS recall
@@ -54,6 +60,8 @@ Ai-Memory-Free implements the smallest useful A+ core:
 - no generation
 - MCP as a thin adapter
 - eval fixtures
+- hashed scoped clients, rate limits, and mutation audit
+- an isolated Supabase Vault encrypted-secret store
 
 This captures the useful lessons from the category leaders while avoiding the
 pieces that would make the default system paid, provider-specific, or hard for an

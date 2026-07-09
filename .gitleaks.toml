@@ -1,0 +1,16 @@
+title = "Ai-Memory-Free secret scanning"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "ai-memory-free-client-token"
+description = "Ai-Memory-Free high-entropy client token"
+regex = '''\bamf_[A-Za-z0-9_-]{32,}\b'''
+keywords = ["amf_"]
+
+[[rules]]
+id = "bearer-token-assignment"
+description = "Long bearer token assigned in configuration"
+regex = '''(?i)(?:memory_token|authorization)["' ]*[:=]["' ]*(?:Bearer )?[A-Za-z0-9._~-]{32,}'''
+keywords = ["MEMORY_TOKEN", "authorization"]

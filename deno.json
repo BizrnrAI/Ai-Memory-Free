@@ -1,7 +1,8 @@
 {
   "nodeModulesDir": "auto",
   "tasks": {
-    "check": "deno check supabase/functions/memory/index.ts"
+    "check": "deno check supabase/functions/memory/index.ts supabase/functions/memory/lib.ts supabase/functions/memory/lib_test.ts",
+    "test": "deno test supabase/functions/memory/lib_test.ts"
   },
   "imports": {
     "@supabase/supabase-js": "jsr:@supabase/supabase-js@2"
