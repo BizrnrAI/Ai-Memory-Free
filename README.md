@@ -1,5 +1,20 @@
 # Ai-Memory-Free
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-16a34a.svg)](LICENSE)
+[![No paid LLM API required](https://img.shields.io/badge/paid%20LLM%20API-not%20required-2563eb.svg)](docs/FAQ.md#is-ai-memory-free-really-free)
+[![MCP compatible](https://img.shields.io/badge/MCP-compatible-7c3aed.svg)](docs/MCP.md)
+
+**Give this repository link to any capable AI coding agent:**
+<https://github.com/BizrnrAI/Ai-Memory-Free>
+
+The ready-to-paste prompt is in [INSTALL_WITH_AI.md](INSTALL_WITH_AI.md). The
+complete model-neutral implementation contract is
+[docs/AI_AGENT_INSTALL.md](docs/AI_AGENT_INSTALL.md).
+
+Created by [Kristian Peter](https://kristianpeter.com), Chief Automation Officer.
+Free under the [MIT License](LICENSE): no licensing fee, account, or required paid
+model API.
+
 Ai-Memory-Free is a no-cost, LLM-agnostic memory service for agents, applications,
 and MCP clients. It stores durable platform knowledge in one Supabase Postgres
 database and returns ranked context without asking any generative model to reason,
@@ -23,6 +38,22 @@ The default path provides:
 The caller brings the LLM. The service only stores and retrieves inspectable data,
 so Claude, Codex, Gemini, local models, ordinary software, and future agents can all
 share the same memory.
+
+## Choose Your Path
+
+| Goal | Start here |
+| --- | --- |
+| Give the GitHub link to an AI agent | [INSTALL_WITH_AI.md](INSTALL_WITH_AI.md) |
+| Deploy a new memory backend | [AI agent installation contract](docs/AI_AGENT_INSTALL.md#path-a-deploy-a-new-independent-memory) |
+| Connect an existing repo | [Existing-project path](docs/AI_AGENT_INSTALL.md#path-b-connect-an-existing-project-or-repository) |
+| Configure MCP | [MCP guide](docs/MCP.md) |
+| Call from TypeScript or HTTPS | [Integration choices](docs/AI_AGENT_INSTALL.md#integration-choices) |
+| Understand security and Vault | [Security model](docs/SECURITY.md) |
+| Browse all documentation | [Documentation index](docs/INDEX.md) |
+
+The project is self-deployed. Your Supabase account owns the database, memories,
+tokens, and Vault secrets. The repository sends no telemetry to KristianPeter.com
+or BizRnR.
 
 ## Credential Semantics
 
@@ -54,7 +85,14 @@ stdio MCP adapter (optional secret tools are off by default)
 
 ## Quick Start
 
-1. Create a free Supabase project and install the Supabase CLI.
+1. Clone the repository, create a free Supabase project, and install the Supabase
+   CLI:
+
+```bash
+git clone https://github.com/BizrnrAI/Ai-Memory-Free.git
+cd Ai-Memory-Free
+```
+
 2. Install the locked Node dependencies:
 
 ```bash
@@ -155,6 +193,11 @@ MEMORY_EVAL_FIXTURES=eval/fixtures.local.json npm run eval
 
 ## Repository Map
 
+- `AI.md` - compact routing instructions for any AI coding agent
+- `INSTALL_WITH_AI.md` - copy-paste handoff prompt
+- `docs/INDEX.md` - complete documentation navigation
+- `docs/AI_AGENT_INSTALL.md` - deploy/integrate/verify contract for agents
+- `docs/FAQ.md` - ownership, cost, model, security, and integration answers
 - `docs/AUDIT.md` - full-repository audit and remediation record
 - `docs/ARCHITECTURE.md` - system shape and trust boundaries
 - `docs/SECURITY.md` - threat model, token scopes, and secret semantics
@@ -165,6 +208,7 @@ MEMORY_EVAL_FIXTURES=eval/fixtures.local.json npm run eval
 - `supabase/functions/memory/` - Edge Function and tested pure helpers
 - `packages/client/` - TypeScript HTTPS client
 - `packages/mcp-server/` - stdio MCP adapter
+- `scripts/scaffold-integration.ts` - dry-run-first target repository integration
 - `eval/` and `scripts/eval.ts` - retrieval quality gate
 
 ## Free-Tier Boundaries
@@ -187,3 +231,18 @@ vendor limits, not architectural guarantees, so verify them before a deployment:
 The full raw content remains in Postgres. The embedding model affects semantic
 ranking only; full-text retrieval, provenance, and exports remain inspectable and
 provider-neutral.
+
+## Open Source And Attribution
+
+Ai-Memory-Free may be used, copied, modified, distributed, sublicensed, or included
+in commercial projects under the [MIT License](LICENSE). There is no required fee
+or hosted subscription. Preserve the license notice in copies or substantial
+portions of the software.
+
+The project was created by [Kristian Peter](https://kristianpeter.com), a Chief
+Automation Officer building AI voice, marketing, and workflow systems that let one
+operator run an entire company. Attribution and a GitHub star are appreciated, but
+the software remains genuinely free and user-owned.
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md),
+[SUPPORT.md](SUPPORT.md), and the private reporting process in [SECURITY.md](SECURITY.md).

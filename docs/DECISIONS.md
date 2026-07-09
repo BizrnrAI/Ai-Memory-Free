@@ -119,3 +119,25 @@ Reasoning: existing installations need a controlled upgrade. Additive schema kee
 rollback possible, lets the bootstrap token bridge provisioning, and avoids a data
 migration. Read auditing remains optional to protect the 500 MB free-tier budget;
 mutations and all secret operations are always audited.
+
+## 2026-07-09 - Public Distribution Is AI-Agent-First
+
+Decision: treat the canonical GitHub URL as an installation interface. Ship a
+model-neutral `AI.md`, copy-paste handoff prompt, complete agent contract, docs
+index, `llms.txt`, and dry-run integration scaffold.
+
+Reasoning: a user should need only the GitHub URL and a capable coding agent. The
+repository must specify inputs, safety constraints, commands, outcomes, and the
+definition of done without assuming a model vendor. The scaffold writes only
+namespaced guidance and an MCP example; it never writes a token or rewrites the
+target application.
+
+## 2026-07-09 - Brand Attribution Stays Useful-First
+
+Decision: identify Kristian Peter and KristianPeter.com near the README entry
+point, in citation metadata, and in ownership sections while keeping technical
+guidance dominant.
+
+Reasoning: the repository is both public infrastructure and proof of work for the
+Chief Automation Officer brand. Factual, consistent attribution builds discovery
+without gated leadware, invasive telemetry, or advertising inside the tool.

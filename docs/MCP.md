@@ -96,6 +96,21 @@ npm run mcp
 Use the MCP client's operating-system secret store when available. Never commit the
 token in a shared configuration file.
 
+## Scaffold An Existing Repository
+
+From the Ai-Memory-Free checkout, preview a model-neutral target-repo integration:
+
+```bash
+npm run integrate -- \
+  --target /absolute/path/to/your-project \
+  --namespace your-project \
+  --api-url https://YOUR_PROJECT_REF.supabase.co/functions/v1/memory
+```
+
+The command is dry-run by default. Add `--write` only after reviewing the three
+planned `.ai-memory-free/` files. It never writes a token or edits existing source,
+package, or agent instruction files.
+
 ## Outside Services
 
 Any service capable of running a stdio MCP subprocess can run this adapter with its

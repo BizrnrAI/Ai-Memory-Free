@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If Ai-Memory-Free helps your project, cite the repository and creator."
+title: "Ai-Memory-Free: a no-cost, LLM-agnostic memory service"
+type: software
+authors:
+  - family-names: Peter
+    given-names: Kristian
+    website: "https://kristianpeter.com"
+version: 0.2.0
+license: MIT
+repository-code: "https://github.com/BizrnrAI/Ai-Memory-Free"
+url: "https://github.com/BizrnrAI/Ai-Memory-Free"
+abstract: >-
+  A self-deployed AI memory service using Supabase Postgres, pgvector,
+  full-text search, Edge Functions, Vault, HTTPS, and MCP without a generative
+  model dependency in the memory layer.
+keywords:
+  - AI memory
+  - LLM agnostic
+  - MCP
+  - Supabase
+  - pgvector
+  - AI agents

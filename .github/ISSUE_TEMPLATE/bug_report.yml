@@ -1,0 +1,46 @@
+name: Bug report
+description: Report a reproducible defect using synthetic, non-secret data.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Never paste a token, database URL, service-role key, customer record, Vault secret, or unredacted log. Use the private security process for vulnerabilities.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: v0.2.0 or commit SHA
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe expected and observed behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Minimal steps using synthetic data only.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Node, Deno, Supabase CLI, OS, and integration type.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety confirmation
+      options:
+        - label: I removed all credentials, personal data, project references, and private URLs.
+          required: true
+        - label: I ran the checks documented in SUPPORT.md.
+          required: true

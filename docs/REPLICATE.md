@@ -2,7 +2,8 @@
 
 An agent can recreate the secure no-cost system from this repository alone:
 
-1. Read `README.md`, `docs/ARCHITECTURE.md`, and `docs/SECURITY.md`.
+1. Read `AI.md`, `docs/AI_AGENT_INSTALL.md`, `README.md`,
+   `docs/ARCHITECTURE.md`, and `docs/SECURITY.md`.
 2. Create a free Supabase project.
 3. Run `npm ci`.
 4. Apply `0001_zero_cost_memory.sql`.
@@ -18,7 +19,9 @@ An agent can recreate the secure no-cost system from this repository alone:
 12. Verify `whoami`, then remember and recall a disposable memory.
 13. Seed real eval IDs and run `npm run eval`.
 14. Configure MCP using `docs/MCP.md`.
-15. Run an encrypted `pg_dump`, restore it into an isolated project, and prove a
+15. When connecting another repository, dry-run `npm run integrate -- ...`, review
+    the proposed `.ai-memory-free/` files, and rerun it with `--write`.
+16. Run an encrypted `pg_dump`, restore it into an isolated project, and prove a
     restored recall.
 
 No generative model, paid API, queue, managed vector database, or always-on local

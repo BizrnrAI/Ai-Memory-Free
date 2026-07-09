@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Installation and support
+    url: https://github.com/BizrnrAI/Ai-Memory-Free/blob/main/SUPPORT.md
+    about: Read the support paths before opening an issue.
+  - name: Private security report
+    url: https://github.com/BizrnrAI/Ai-Memory-Free/security/advisories/new
+    about: Report vulnerabilities privately. Never post credentials in an issue.

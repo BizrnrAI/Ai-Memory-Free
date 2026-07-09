@@ -26,14 +26,20 @@ bounded abuse controls, auditable mutations, and Supabase Vault encrypted secret
 | Medium | Mutations and secret operations had no actor audit trail. | Added `memory_audit_log` with request, client, action, namespace, resource, outcome, and non-sensitive details. Recall auditing is optional to conserve space. |
 | Medium | Secret-capable MCP tools would be dangerous if automatically exposed to every LLM client. | Secret tools are not registered unless `MCP_ENABLE_SECRET_TOOLS=true`; API permissions are still enforced independently. |
 | Medium | CI used `npm install` despite a lockfile and did not execute unit tests, Deno tests, or a dependency audit. | CI now uses `npm ci`, runs Node and Deno tests, uses read-only workflow permissions, serializes duplicate runs, and audits runtime dependencies. |
+| Medium | The repository had no one-link AI installation contract or safe way to connect an arbitrary existing project. | Added `AI.md`, a copy-paste installation handoff, a complete model-neutral agent contract, and a dry-run-by-default scaffold that never writes credentials or rewrites target source. |
 | Low | The client assumed every response was JSON and could throw an unrelated parser error on proxy failures. | Added bounded response parsing, stable errors, and a 30-second timeout. |
 | Low | Documentation described “model agnosticism” without separating caller LLM independence from the fixed embedding space. | Docs now state the precise contract: no generative-model dependency; the default semantic index is fixed to Supabase `gte-small` and requires re-embedding if replaced. |
+| Low | The project lacked the community, support, citation, machine-readable, and release metadata expected of a public open-source repository. | Added an MIT-first public documentation index, contribution and security policies, issue/PR templates, `CITATION.cff`, `llms.txt`, changelog, FAQ, and public-release checklist. |
 
 ## Verification Performed
 
 - TypeScript root and workspace type checks
 - Node client tests
 - Deno type checks and pure security/helper tests
+- documentation contract checks for required files, internal links, anchors,
+  canonical URL, license language, secret safety, and creator attribution
+- scaffold dry-run and write-mode tests proving no credential is generated or
+  persisted and only the three namespaced integration files are created
 - `npm audit --omit=dev`
 - clean application of migrations `0001`, `0003`, and `0004` to an isolated
   disposable PostgreSQL 17 + pgvector database

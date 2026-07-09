@@ -1,0 +1,43 @@
+name: Feature request
+description: Propose an improvement that preserves the no-cost, model-neutral core.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: What cannot a user or agent accomplish today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Describe the smallest useful solution.
+    validations:
+      required: true
+  - type: dropdown
+    id: cost
+    attributes:
+      label: Default-path cost impact
+      options:
+        - No new paid dependency
+        - Optional paid integration only
+        - Unsure
+    validations:
+      required: true
+  - type: textarea
+    id: model
+    attributes:
+      label: Model-agnostic impact
+      description: Explain how the proposal avoids coupling memory to one generative model.
+    validations:
+      required: true
+  - type: textarea
+    id: security
+    attributes:
+      label: Security and migration impact
+      description: Note auth, namespace, RLS, Vault, secrets, schema, or compatibility changes.
+    validations:
+      required: true
