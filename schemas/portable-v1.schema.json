@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/BizrnrAI/Ai-Memory-Free/schemas/portable-v1.schema.json",
+  "title": "Ai-Memory-Free portable header v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "version", "namespace", "record_count", "payload_sha256", "excluded"],
+  "properties": {
+    "format": { "const": "ai-memory-free-portable" },
+    "version": { "const": 1 },
+    "release": { "type": "string" },
+    "namespace": { "type": "string" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "resources": { "type": "array", "items": { "enum": ["memories", "supersessions", "events", "sources", "source_links", "links", "documents"] } },
+    "record_count": { "type": "integer", "minimum": 0 },
+    "payload_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "excluded": { "type": "array", "items": { "type": "string" } }
+  }
+}

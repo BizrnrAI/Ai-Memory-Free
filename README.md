@@ -1,5 +1,7 @@
 # Ai-Memory-Free
 
+**Current release: v1.2.0 — protocol v1, eight independently discoverable modules.**
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-16a34a.svg)](LICENSE)
 [![No paid LLM API required](https://img.shields.io/badge/paid%20LLM%20API-not%20required-2563eb.svg)](docs/FAQ.md#is-ai-memory-free-really-free)
 [![MCP compatible](https://img.shields.io/badge/MCP-compatible-7c3aed.svg)](docs/MCP.md)
@@ -32,6 +34,12 @@ The default path provides:
 - database-backed per-client rate limits and security audit events
 - recoverable platform secrets encrypted with Supabase Vault authenticated encryption
 - one HTTPS API, a TypeScript client, and a thin MCP adapter
+- deterministic multi-namespace context bundles with explicit character budgets
+- idempotent batch ingestion and an optional append-only agent activity journal
+- first-class source confidence, freshness, validity, and contradiction evidence
+- portable checksummed export/import that excludes credentials and regenerates vectors
+- pluggable embedding profiles while preserving free `gte-small` as the default
+- optional document/chunk search, maintenance status, and OAuth-protected remote MCP
 - unit tests, Deno tests, migration checks, and retrieval eval fixtures
 - no paid model API, managed vector database, queue, or always-on server
 
@@ -47,6 +55,9 @@ share the same memory.
 | Deploy a new memory backend | [AI agent installation contract](docs/AI_AGENT_INSTALL.md#path-a-deploy-a-new-independent-memory) |
 | Connect an existing repo | [Existing-project path](docs/AI_AGENT_INSTALL.md#path-b-connect-an-existing-project-or-repository) |
 | Configure MCP | [MCP guide](docs/MCP.md) |
+| Understand v1.2 modules | [Module contract](docs/MODULES.md) |
+| Upgrade from v0.2 | [v1.2 upgrade guide](docs/UPGRADE_V1_2.md) |
+| Move data between installations | [Portable export/import](docs/PORTABILITY.md) |
 | Call from TypeScript or HTTPS | [Integration choices](docs/AI_AGENT_INSTALL.md#integration-choices) |
 | Understand security and Vault | [Security model](docs/SECURITY.md) |
 | Browse all documentation | [Documentation index](docs/INDEX.md) |
@@ -157,7 +168,7 @@ Run the local stdio adapter with any scoped token:
 MEMORY_API_URL="$MEMORY_API_URL" MEMORY_TOKEN="$MEMORY_TOKEN" npm run mcp
 ```
 
-The normal tool set is:
+The always-on core tool set is:
 
 - `memory_health`
 - `memory_whoami`
@@ -166,15 +177,43 @@ The normal tool set is:
 - `memory_retire`
 - `memory_supersede`
 
+v1.2 also registers context, batch, event, provenance, relationship, document, and
+maintenance tools. `memory_health` is the machine-readable capability source.
+
 Encrypted-secret tools are absent unless the operator explicitly sets
 `MCP_ENABLE_SECRET_TOOLS=true` **and** gives that client the matching secret
 permissions. See [docs/MCP.md](docs/MCP.md).
 
 The stdio server follows MCP guidance by reading credentials from its environment.
-Any outside service can run this adapter with its own scoped token. A remotely
-hosted HTTP MCP server is not included because the MCP specification requires an
-OAuth-based authorization design for HTTP transports; the HTTPS memory API is the
-zero-server remote integration surface.
+Any outside service can run this adapter with its own scoped token. v1.2 also
+provides an optional sessionless HTTP MCP Edge Function protected by
+Supabase Auth OAuth 2.1 and explicit database grants. It never exposes Vault tools.
+See [docs/REMOTE_MCP.md](docs/REMOTE_MCP.md).
+
+## v1.2 Modular Capabilities
+
+Call `health` to discover the protocol, embedding profile, actions, and installed
+module manifests. The required `core` remains small; events, provenance,
+relationships, documents, maintenance, Vault secrets, and remote MCP are isolated
+modules that reuse the same authorization and API.
+
+```bash
+# Safe, retryable activity capture
+curl -s "$MEMORY_API_URL" \
+  -H "authorization: Bearer $MEMORY_TOKEN" \
+  -H "content-type: application/json" \
+  -d '{"protocol_version":"1","action":"event_append","namespace":"platform","event_type":"deploy.completed","summary":"Production deployment completed and smoke checks passed.","source_system":"deploy-agent","external_id":"deploy-2026-07-10"}'
+
+# Deterministic context across explicitly granted namespaces
+curl -s "$MEMORY_API_URL" \
+  -H "authorization: Bearer $MEMORY_TOKEN" \
+  -H "content-type: application/json" \
+  -d '{"protocol_version":"1","action":"context","query":"What changed in the latest deployment?","namespaces":["platform","operations"],"max_chars":12000,"include_events":true}'
+```
+
+Portable export and local text-document ingestion are dry-run/safe by default or
+strictly bounded. See [PORTABILITY.md](docs/PORTABILITY.md) and
+[DOCUMENTS.md](docs/DOCUMENTS.md).
 
 ## Verification
 
@@ -197,6 +236,14 @@ MEMORY_EVAL_FIXTURES=eval/fixtures.local.json npm run eval
 - `INSTALL_WITH_AI.md` - copy-paste handoff prompt
 - `docs/INDEX.md` - complete documentation navigation
 - `docs/AI_AGENT_INSTALL.md` - deploy/integrate/verify contract for agents
+- `docs/MODULES.md` - stable core/module seams and extension rules
+- `docs/PROTOCOL.md` - protocol v1, capability discovery, and idempotency
+- `docs/EVENTS.md` - safe agent activity journal
+- `docs/PROVENANCE.md` - freshness and evidence relationships
+- `docs/DOCUMENTS.md` - optional text document ingestion and search
+- `docs/PORTABILITY.md` - checksummed export/import
+- `docs/REMOTE_MCP.md` - optional Supabase OAuth 2.1 remote MCP
+- `docs/UPGRADE_V1_2.md` - additive upgrade and rollback
 - `docs/FAQ.md` - ownership, cost, model, security, and integration answers
 - `docs/AUDIT.md` - full-repository audit and remediation record
 - `docs/ARCHITECTURE.md` - system shape and trust boundaries
@@ -206,6 +253,8 @@ MEMORY_EVAL_FIXTURES=eval/fixtures.local.json npm run eval
 - `docs/ZERO_COST_SSOT_MEMORY.md` - canonical implementation guide
 - `supabase/migrations/` - additive database contract
 - `supabase/functions/memory/` - Edge Function and tested pure helpers
+- `supabase/functions/mcp/` - optional OAuth-protected Streamable HTTP MCP
+- `schemas/` - machine-readable protocol, module, and portable contracts
 - `packages/client/` - TypeScript HTTPS client
 - `packages/mcp-server/` - stdio MCP adapter
 - `scripts/scaffold-integration.ts` - dry-run-first target repository integration

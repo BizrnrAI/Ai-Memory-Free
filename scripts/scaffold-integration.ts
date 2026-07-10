@@ -139,6 +139,10 @@ This repository uses [Ai-Memory-Free](https://github.com/BizrnrAI/Ai-Memory-Free
 
 Copy \`mcp.json.example\` into the configuration format used by your AI client, then replace the token placeholder through that client secret store or process environment.
 
+At session start, call \`memory_health\` and use its protocol/module capabilities.
+Use \`memory_context\` when work spans explicitly granted namespaces. The backend is
+v1.2.0 but protocol v1 remains compatible with older clients.
+
 ## Agent behavior
 
 Give \`AGENT_POLICY.md\` to any AI agent working in this repository. It defines when to recall, remember, retire, and supersede knowledge without coupling the project to a particular model.
@@ -158,6 +162,10 @@ Use the Ai-Memory-Free namespace \`${namespace}\` for durable knowledge about th
 6. Never store passwords, API keys, bearer tokens, private keys, or customer secrets as semantic memory.
 7. Use secret tools only from a dedicated trusted process with an explicit \`secrets:*\` grant.
 8. The memory returns ranked evidence. The calling model remains responsible for reasoning and should identify uncertainty or contradictions.
+9. Put tool/session outcomes in the optional event journal; promote only durable conclusions to semantic memory.
+10. Register sources and contradiction links when provenance or conflicting truth matters.
+11. Keep large source text in the optional document module instead of semantic memory.
+12. Use portable export for mobility; it intentionally excludes secrets and caller credentials.
 `;
 }
 

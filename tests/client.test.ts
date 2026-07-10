@@ -16,6 +16,7 @@ test('client sends bearer auth without exposing it in the request body', async (
 
   assert.equal((seen?.headers as Record<string, string>).authorization, 'Bearer top-secret');
   assert.doesNotMatch(String(seen?.body), /top-secret/);
+  assert.equal(JSON.parse(String(seen?.body)).protocol_version, '1');
 });
 
 test('client exposes an explicit encrypted-secret read operation', async () => {
@@ -41,10 +42,25 @@ test('client exposes an explicit encrypted-secret read operation', async () => {
 
   assert.equal(result.secret.secret, 'decrypted-by-vault');
   assert.deepEqual(requests[0], {
+    protocol_version: '1',
     action: 'secret_get',
     namespace: 'platform',
     name: 'stripe',
   });
+});
+
+test('client exposes modular v1.2 actions through typed helpers and generic call', async () => {
+  const requests: Record<string, unknown>[] = [];
+  const fetchImpl: typeof fetch = async (_input, init) => {
+    requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+    return new Response(JSON.stringify({ ok: true }));
+  };
+  const client = new MemoryClient({ apiUrl: 'https://memory.example.test', token: 'client-token', fetchImpl });
+  await client.context({ query: 'deployment state', namespaces: ['platform', 'operations'] });
+  await client.appendEvent({ namespace: 'platform', event_type: 'deploy.completed', summary: 'Deployed.' });
+  await client.call('maintenance_status', { namespace: 'platform' });
+  assert.deepEqual(requests.map((request) => request.action), ['context', 'event_append', 'maintenance_status']);
+  assert(requests.every((request) => request.protocol_version === '1'));
 });
 
 test('client converts non-JSON failures into a bounded error', async () => {

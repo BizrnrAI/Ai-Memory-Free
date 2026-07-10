@@ -5,6 +5,9 @@ type Fixture = {
   expected_ids: string[];
   namespace?: string;
   notes?: string;
+  expected_absent_ids?: string[];
+  expected_top_id?: string;
+  minimum_final_score?: number;
 };
 
 const file = process.env.MEMORY_EVAL_FIXTURES ?? 'eval/fixtures.example.json';
@@ -47,9 +50,23 @@ for (const [index, fixture] of fixtures.entries()) {
     if (seenIds.has(id)) throw new Error(`fixture ${index} repeats expected id ${id}`);
     seenIds.add(id);
   }
+  for (const id of fixture.expected_absent_ids ?? []) validateUuidOrPlaceholder(id, index, isExample);
+  if (fixture.expected_top_id) validateUuidOrPlaceholder(fixture.expected_top_id, index, isExample);
+  if (fixture.minimum_final_score !== undefined &&
+      (!Number.isFinite(fixture.minimum_final_score) || fixture.minimum_final_score < 0)) {
+    throw new Error(`fixture ${index} has an invalid minimum_final_score`);
+  }
 }
 
 console.log(`validated ${fixtures.length} eval fixture(s) from ${file}`);
 if (placeholders > 0) {
   console.log(`example contains ${placeholders} placeholder id(s); copy it to an ignored local file before live eval`);
+}
+
+function validateUuidOrPlaceholder(id: string, index: number, allowPlaceholder: boolean) {
+  if (typeof id !== 'string') throw new Error(`fixture ${index} has an invalid id`);
+  if (id.startsWith('replace-with-') && allowPlaceholder) return;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+    throw new Error(`fixture ${index} has an invalid UUID`);
+  }
 }

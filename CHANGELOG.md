@@ -3,7 +3,31 @@
 Notable changes are documented here. Versions follow semantic versioning after the
 first public release.
 
-## 0.2.0 - Unreleased
+## 1.2.0 - 2026-07-10
+
+### Added
+
+- protocol v1 schemas, module manifests, capability discovery, and conformance checks
+- checksummed, dry-run-first portable export/import with lifecycle restoration
+- pluggable embedding adapter/profile storage and bounded reindex batches
+- idempotent batch memory writes and append-only agent activity events
+- source confidence, freshness, validity, and source-to-memory links
+- deterministic multi-namespace context bundles with character budgets
+- evidence and contradiction relationships independent from memory lifecycle
+- optional text document/chunk ingestion and hybrid document search
+- namespace maintenance/capacity status
+- optional remote Streamable HTTP MCP protected by Supabase Auth OAuth 2.1
+- v0.2 upgrade/rollback guide and module-specific documentation
+
+### Compatibility And Security
+
+- every v0.2 action remains compatible when `protocol_version` is omitted
+- migration `0005` is additive; the default inline `gte-small` vector remains
+- all new tables use service-role-only RLS and all new functions pin `search_path`
+- portable files exclude secrets, credentials, embeddings, audits, and rate limits
+- remote MCP never registers encrypted-secret tools
+
+## 0.2.0 - 2026-07-09
 
 ### Added
 

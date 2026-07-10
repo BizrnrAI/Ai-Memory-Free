@@ -41,6 +41,20 @@ Retires a memory without deleting provenance.
 
 Links an old row to an active replacement in the same namespace.
 
+## v1.2 Module Tools
+
+- `memory_remember_batch`
+- `memory_context`
+- `memory_event_append`, `memory_event_list`
+- `memory_source_upsert`, `memory_source_link`
+- `memory_link_create`, `memory_link_list`, `memory_link_resolve`
+- `memory_document_ingest`, `memory_document_search`
+- `memory_maintenance_status`
+
+These tools call the same versioned API as HTTPS and TypeScript. `memory_health`
+is the canonical capability list. Activity events never accept chain-of-thought;
+remote MCP never registers secret tools.
+
 ## Secret Tools (Explicit Opt-In)
 
 Set `MCP_ENABLE_SECRET_TOOLS=true` to register:
@@ -127,3 +141,4 @@ References:
 
 - [MCP authorization](https://modelcontextprotocol.io/specification/draft/basic/authorization)
 - [MCP transports](https://modelcontextprotocol.io/specification/draft/basic/transports)
+- [Optional Supabase OAuth remote MCP](REMOTE_MCP.md)

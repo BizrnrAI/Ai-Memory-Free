@@ -44,7 +44,9 @@ Use this when the user has no existing Ai-Memory-Free API.
    npm ci
    ```
 
-2. Read `README.md`, `docs/SECURITY.md`, and every migration before applying it.
+2. Read `README.md`, `docs/MODULES.md`, `docs/PROTOCOL.md`,
+   `docs/SECURITY.md`, and every migration before applying it. For an existing
+   installation, also read `docs/UPGRADE_V1_2.md`.
 
 3. Verify the local source:
 
@@ -96,6 +98,10 @@ Use this when the user has no existing Ai-Memory-Free API.
    ```
 
 9. Continue with Path B to connect the target repository.
+
+10. Confirm `health` reports release `1.2.0`, protocol `1`,
+    `gte-small-v1`, and eight module manifests. Do not infer capabilities from the
+    repository version when the deployed service reports something else.
 
 ### Path B: Connect An Existing Project Or Repository
 
@@ -195,8 +201,22 @@ An installation is not complete until all applicable checks pass.
 7. `secret_list` returns metadata only and no Vault plaintext/ciphertext.
 8. The target repo contains no token in git status, git diff, or secret-scan output.
 9. Retire the disposable marker after verification.
+10. Retry one `remember` using the same `source_system` + `external_id` and prove
+    it does not create a duplicate.
+11. Append the same event twice with one external ID and prove only one event exists.
+12. Create and resolve a synthetic contradiction link without changing either
+    memory lifecycle.
+13. Ingest a small text document and prove `document_search` returns its chunk.
+14. Request a two-namespace context bundle and prove every namespace was explicitly
+    granted and the character budget is respected.
+15. Run portable export without `--write`, then write an encrypted test export,
+    import it into an isolated project, and prove memory/lifecycle restoration.
 
 For a new deployment, also verify a token can be revoked and then receives 401.
+
+Remote MCP is optional. If requested, follow [REMOTE_MCP.md](REMOTE_MCP.md), use
+Supabase OAuth 2.1, create a least-privilege `memory_oauth_grants` row, verify
+protected-resource discovery, and prove an ungranted OAuth user receives 401.
 
 ## Memory Policy For The Target Project
 
@@ -225,6 +245,7 @@ The implementing agent must report:
 - files changed
 - permissions granted, without revealing the token
 - each verification check and observed result
+- deployed release/protocol, module capabilities, and embedding profile
 - anything requiring a human action
 - confirmation that no secrets were committed
 

@@ -13,8 +13,10 @@ Then paste this prompt:
 > never ask me to paste a token or service-role key into chat. Keep the memory
 > service external to my application, connect this project through MCP or the
 > TypeScript client, use a project-specific namespace, and preserve existing code.
-> Run the documented checks and prove whoami, remember, recall, forbidden namespace,
-> and secret isolation before reporting completion.
+> Run the documented checks and prove whoami, idempotent remember/batch, recall,
+> forbidden namespace, event retry safety, source and contradiction links,
+> document search, context budgeting, portable restore, and secret isolation before
+> reporting completion. Use optional remote MCP only with Supabase OAuth 2.1.
 
 The agent should follow the complete contract in
 [docs/AI_AGENT_INSTALL.md](docs/AI_AGENT_INSTALL.md). The contract works with

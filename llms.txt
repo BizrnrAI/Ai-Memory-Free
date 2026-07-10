@@ -24,6 +24,14 @@ Telemetry: none
 - MCP: ./docs/MCP.md
 - Operations: ./docs/OPERATIONS.md
 - Exact replication: ./docs/REPLICATE.md
+- Module contract: ./docs/MODULES.md
+- Protocol v1: ./docs/PROTOCOL.md
+- Portable export/import: ./docs/PORTABILITY.md
+- Events: ./docs/EVENTS.md
+- Provenance and relationships: ./docs/PROVENANCE.md
+- Documents: ./docs/DOCUMENTS.md
+- Remote OAuth MCP: ./docs/REMOTE_MCP.md
+- Upgrade from v0.2: ./docs/UPGRADE_V1_2.md
 - Canonical implementation guide: ./docs/ZERO_COST_SSOT_MEMORY.md
 
 The memory stores and retrieves ranked evidence. The calling model performs

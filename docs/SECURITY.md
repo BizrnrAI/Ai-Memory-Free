@@ -69,6 +69,35 @@ A client must have both the action permission and the target namespace grant.
 Use separate memory and secret tokens unless one trusted process genuinely needs
 both. Grant `secrets:read` more narrowly than `secrets:list`.
 
+The same memory permissions govern events, provenance, relationships, documents,
+context, portability, and maintenance. Export/import and embedding reindex require
+`memory:admin`. Multi-namespace context fails unless every requested namespace is
+explicitly granted.
+
+## OAuth For Remote MCP
+
+The optional HTTP MCP function accepts Supabase Auth OAuth 2.1 access tokens, not
+Ai-Memory-Free static remote tokens. The memory API validates the token with
+Supabase Auth, then loads an explicit `memory_oauth_grants` row containing
+namespaces, permissions, expiry, and revocation state.
+
+OAuth identity alone grants nothing. Grant creation remains a reviewed SQL/admin
+operation. Remote MCP never exposes secret actions, and its 401 response advertises
+protected-resource metadata for authorization-server discovery.
+
+## v1.2 Module Isolation
+
+Every new table has RLS enabled and direct `public`, `anon`, and `authenticated`
+access revoked. Cross-namespace memory, source, relationship, and document links
+are rejected both by the Edge API and database triggers. Trigger/RPC functions pin
+`search_path` and execute only for `service_role`.
+
+Portable export excludes Vault values/ciphertext, credentials, token hashes, OAuth
+grants, embeddings, audit logs, and rate-limit state. The events and documents
+modules apply the ordinary secret-material guard and bounded inputs. The local
+document ingester accepts only small UTF-8 text files and never fetches URLs or
+executes file content.
+
 ## Secret API Guarantees
 
 - `secret_store`: sends plaintext only to the authenticated Edge function and

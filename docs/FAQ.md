@@ -76,6 +76,32 @@ and backup guidance. It does not provide an SLA, managed incident response, or f
 managed backups. Production operators remain responsible for capacity, recovery,
 compliance, and vendor-plan decisions.
 
+## Can it remember every agent action without ruining recall?
+
+Yes. v1.2 keeps curated durable knowledge in `memories` and puts tool/session
+outcomes in the optional append-only event journal. Events are idempotent and not
+embedded by default. Chain-of-thought, credentials, and raw chat logs remain out of
+scope.
+
+## Can I move to a different Supabase project later?
+
+Yes. The v1 portable NDJSON format moves memories, lifecycle, events, sources,
+relationships, and documents with a checksum. Embeddings regenerate in the target.
+Secrets, callers, OAuth grants, audits, and rate limits are intentionally not
+portable and must be provisioned again.
+
+## Is the embedding model replaceable?
+
+v1.2 introduces an embedding adapter and profile table while retaining
+`gte-small-v1` as the only built-in no-cost profile. New profiles can be added with
+their own index and eval baseline. Embedding spaces must never be mixed silently.
+
+## Does remote MCP require a shared bearer token?
+
+No. The optional remote MCP resource uses Supabase Auth OAuth 2.1 and an explicit
+`memory_oauth_grants` row. Stdio MCP continues to use a scoped local token. Remote
+secret tools are never exposed.
+
 ## May I modify or sell software built with it?
 
 Yes. The MIT License permits use, modification, distribution, sublicensing, and

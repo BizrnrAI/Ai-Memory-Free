@@ -8,6 +8,7 @@ import {
   sha256Hex,
   timingSafeEqualHex,
 } from './lib.ts';
+import { boundContext, isPortableResource, splitDocumentText } from './protocol.ts';
 
 Deno.test('scoped permissions and namespaces fail closed', () => {
   assert(hasPermission(['memory:admin'], 'memory:read'));
@@ -57,6 +58,32 @@ Deno.test('high-confidence credential patterns are kept out of ordinary memory',
   const fakeCredential = 'abcdefghijklmnopqrstuvwxyz' + '123456';
   assert(containsLikelySecret(`Authorization: Bearer ${fakeCredential}`));
   assert(!containsLikelySecret('The docs use Bearer YOUR_TOKEN as a placeholder.'));
+});
+
+Deno.test('document chunking is deterministic, bounded, and overlapping', () => {
+  const text = Array.from({ length: 80 }, (_, index) => `sentence ${index}.`).join(' ');
+  const first = splitDocumentText(text, 240, 24);
+  const second = splitDocumentText(text, 240, 24);
+  assertEquals(JSON.stringify(first), JSON.stringify(second));
+  assert(first.length > 1);
+  assert(first.every((chunk) => chunk.length <= 240));
+});
+
+Deno.test('context budgets preserve the best first result and report truncation', () => {
+  const result = boundContext([{ content: 'a'.repeat(20) }, { content: 'b'.repeat(20) }], 25);
+  assertEquals(result.rows.length, 1);
+  assertEquals(result.usedChars, 20);
+  assert(result.truncated);
+  const oversized = boundContext([{ content: 'x'.repeat(100) }], 12);
+  assertEquals(oversized.rows[0].content, 'x'.repeat(12));
+  assertEquals(oversized.usedChars, 12);
+});
+
+Deno.test('portable resources are an explicit allowlist', () => {
+  assert(isPortableResource('memories'));
+  assert(isPortableResource('source_links'));
+  assert(!isPortableResource('secrets'));
+  assert(!isPortableResource('memory_audit_log'));
 });
 
 function assert(condition: unknown): asserts condition {

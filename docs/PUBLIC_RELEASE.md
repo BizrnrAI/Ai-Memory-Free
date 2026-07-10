@@ -7,7 +7,7 @@ repository settings that an owner must apply after merge.
 
 - [x] MIT license with no required fee
 - [x] README with quick start, AI-agent handoff, security boundaries, and attribution
-- [x] model-neutral AI installation contract
+- [x] model-neutral v1.2 AI installation and upgrade contract
 - [x] documentation index and FAQ
 - [x] contribution, support, security, and conduct policies
 - [x] issue and pull-request templates
@@ -39,7 +39,7 @@ repository settings that an owner must apply after merge.
 7. Protect `main`: require pull requests and all Check workflow jobs.
 8. Create a social preview that leads with “Free AI Memory” and includes a small
    “KristianPeter.com” creator attribution.
-9. Publish a `v0.2.0` GitHub release from the reviewed commit with migration notes.
+9. Publish a `v1.2.0` GitHub release from the reviewed commit with migration notes.
 10. Test the public experience in a signed-out browser: clone, every documentation
     link, raw `llms.txt`, issue templates, and license detection.
 

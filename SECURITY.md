@@ -31,5 +31,8 @@ The detailed architecture and operator threat model are in
 
 ## Supported Versions
 
-Until the first public release is published, only the current `main` branch is
-supported. After releases begin, this section will list maintained versions.
+| Version | Supported |
+| --- | --- |
+| 1.2.x | yes |
+| 0.2.x | security fixes during the v1.2 upgrade window |
+| earlier | no |

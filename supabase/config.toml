@@ -2,3 +2,6 @@ project_id = "ai-memory-free"
 
 [functions.memory]
 verify_jwt = false
+
+[functions.mcp]
+verify_jwt = false

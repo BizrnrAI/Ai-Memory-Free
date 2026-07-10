@@ -19,6 +19,17 @@ const required = [
   'docs/AI_AGENT_INSTALL.md',
   'docs/FAQ.md',
   'docs/PUBLIC_RELEASE.md',
+  'docs/MODULES.md',
+  'docs/PROTOCOL.md',
+  'docs/PORTABILITY.md',
+  'docs/EVENTS.md',
+  'docs/PROVENANCE.md',
+  'docs/DOCUMENTS.md',
+  'docs/REMOTE_MCP.md',
+  'docs/UPGRADE_V1_2.md',
+  'schemas/request-v1.schema.json',
+  'schemas/module-manifest.schema.json',
+  'schemas/portable-v1.schema.json',
 ];
 
 const errors: string[] = [];
@@ -40,12 +51,17 @@ const llms = readFileSync(resolve(root, 'llms.txt'), 'utf8');
 
 requireText(readme, 'https://kristianpeter.com', 'README creator attribution');
 requireText(readme, 'https://github.com/BizrnrAI/Ai-Memory-Free', 'README canonical repository URL');
+requireText(readme, 'v1.2.0', 'README release version');
+requireText(readme, 'Modular Capabilities', 'README module guidance');
 requireText(aiEntry, 'docs/AI_AGENT_INSTALL.md', 'AI entry install routing');
 requireText(aiInstall, 'Required Verification', 'AI install verification contract');
 requireText(aiInstall, 'Never ask the user to paste', 'AI install secret-handling rule');
+requireText(aiInstall, 'portable export', 'AI install portability verification');
 requireText(license, 'Permission is hereby granted, free of charge', 'MIT grant text');
 requireText(llms, 'LLM-agnostic', 'llms.txt model-neutral description');
 requireText(llms, 'https://kristianpeter.com', 'llms.txt creator attribution');
+requireText(readFileSync(resolve(root, 'docs/PORTABILITY.md'), 'utf8'), 'Deliberately Excluded', 'portable security exclusions');
+requireText(readFileSync(resolve(root, 'docs/REMOTE_MCP.md'), 'utf8'), 'OAuth 2.1', 'remote MCP authorization');
 
 if (errors.length > 0) {
   throw new Error(`documentation validation failed:\n- ${errors.join('\n- ')}`);

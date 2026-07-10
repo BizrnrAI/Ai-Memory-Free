@@ -6,7 +6,7 @@ authors:
   - family-names: Peter
     given-names: Kristian
     website: "https://kristianpeter.com"
-version: 0.2.0
+version: 1.2.0
 license: MIT
 repository-code: "https://github.com/BizrnrAI/Ai-Memory-Free"
 url: "https://github.com/BizrnrAI/Ai-Memory-Free"
