@@ -1,119 +1,162 @@
 # Architecture
 
-Ai-Memory-Free has one core implementation and thin adapters around it.
+Ai-Memory-Free has one database implementation, one Edge API, and thin callers.
 
 ```text
-Any LLM / agent / app / MCP client
+LLM / agent / app / stdio MCP client
         |
-        | HTTPS remember / recall
+        | Authorization: Bearer <scoped token>
         v
 Supabase Edge Function: memory
         |
-        | gte-small in-edge embeddings
-        | service-role database access
+        +-- SHA-256 token lookup -> client identity
+        +-- permission + namespace authorization
+        +-- database-backed rate limit
+        +-- input validation + secret guard
+        +-- gte-small bounded-chunk embedding
+        +-- action handler + non-sensitive audit event
+        |
         v
 Supabase Postgres
-        |
-        | memories table
-        | recall() RPC
-        | bump_access(), retire_memory(), supersede_memory()
-        | compact_memories() (optional maintenance)
-        v
-Ranked context bundle
+  memories                ranked semantic + FTS content
+  memory_clients          hashed access tokens and grants
+  memory_secrets          safe metadata + Supabase Vault UUID
+  vault.secrets           authenticated encrypted secret payloads
+  memory_audit_log        actor/action/resource metadata
+  memory_rate_limit_buckets
 ```
 
-## Core Contract
+## Trust Boundaries
 
-The Edge Function exposes five actions:
+1. Clients receive a unique high-entropy token. Only its SHA-256 hash is stored.
+2. The Edge Function holds the service-role key and is the only normal database
+   caller. Service-role access bypasses RLS, so every action is authorized in the
+   function before a query or RPC.
+3. Postgres independently constrains dangerous state transitions such as
+   supersession and restricts all tables/functions to `service_role`.
+4. MCP never connects to Postgres. It calls the same HTTPS API as every other
+   client, preventing a second authorization or ranking implementation.
+5. Secret values cross the authenticated API only for explicit store/get actions.
+   Supabase Vault encrypts them at rest; they are never logged, embedded, placed in
+   semantic memory, or returned by list/recall.
 
-- `health` - reports service status and supported actions
-- `remember` - embeds and stores content
-- `recall` - embeds a query and returns ranked memory rows
-- `retire` - marks a row inactive
-- `supersede` - links an older row to a newer row
+## Core API Contract
 
-Every adapter must call this API. Adapters should not store or rank memory
-themselves.
+Memory actions:
+
+- `health`
+- `whoami`
+- `remember`
+- `recall`
+- `retire`
+- `supersede`
+
+Encrypted-secret actions:
+
+- `secret_store`
+- `secret_get`
+- `secret_list`
+- `secret_retire`
+
+Secret actions are a separate authorization domain. A client with `memory:admin`
+does not automatically receive secret access.
+
+## Authorization Model
+
+`memory_clients` grants:
+
+- `allowed_namespaces`: explicit names or `*`
+- `memory:read`, `memory:write`, `memory:admin`
+- `secrets:list`, `secrets:read`, `secrets:write`, `secrets:admin`
+
+`memory:admin` implies memory read/write. `secrets:admin` implies secret
+list/read/write. A literal `*` is reserved for the optional bootstrap token and
+deliberately broad operator credentials.
+
+The Edge Function checks both the permission and namespace before each operation.
+ID-based mutations first resolve the row, then apply the same namespace check.
 
 ## Data Model
 
-`public.memories` is namespace-aware so one project can serve many agents or apps:
+### `memories`
 
 - `namespace` isolates projects, users, teams, or agents.
-- `content` is the raw memory text.
-- `kind` classifies the memory: `note`, `fact`, `decision`, `correction`,
-  `reference`, or `procedure`.
-- `source`, `tags`, and `metadata` provide provenance.
-- `embedding vector(384)` stores the `gte-small` embedding.
-- `fts` is a generated Postgres full-text column.
-- `base_importance` is frozen for ranking.
-- `importance` is mutable lifecycle state for optional decay and expiry.
-- `superseded_by` points to the replacing row.
+- `content` stores the full raw memory.
+- `kind` is `note`, `fact`, `decision`, `correction`, `reference`, or `procedure`.
+- `source`, `tags`, and `metadata` preserve provenance.
+- `embedding vector(384)` stores the averaged `gte-small` representation.
+- generated `fts` indexes the entire raw content.
+- `base_importance` is frozen ranking input.
+- `importance` is mutable lifecycle state for optional decay/expiry.
+- `is_active` plus `superseded_by` is the single lifecycle model.
+
+### `memory_clients`
+
+Contains identity and authorization metadata plus a SHA-256 hash of a generated
+high-entropy bearer token. It never contains the raw token.
+
+### `memory_secrets` + Supabase Vault
+
+`public.memory_secrets` contains namespace/name, safe metadata, access history, and
+a UUID pointing to `vault.secrets`. The payload is stored only in Supabase Vault
+using authenticated encryption; Supabase manages the encryption key outside the
+database. A guarded security-definer RPC is the only application path to
+`vault.decrypted_secrets`.
+
+`secret_list` returns registry metadata only. `secret_get` requires a separate
+`secrets:read` permission and returns plaintext only for that explicit call.
+
+### `memory_audit_log`
+
+Contains request ID, client ID, action, namespace, resource identifier, outcome,
+and bounded details. It must never contain content, bearer tokens, candidates,
+hashes, or salts. Recall auditing is opt-in to control free-tier growth.
 
 ## Retrieval
 
-`recall()` builds two candidate sets:
+`gte-small` handles at most 512 tokens per inference. Long items are therefore
+split into bounded text chunks; up to eight evenly distributed chunks are embedded,
+averaged, and normalized into one vector. The full raw content remains available to
+Postgres FTS, so no content is discarded.
 
-1. vector similarity over `embedding`
-2. full-text search over `fts`
-
-It fuses those candidates with Reciprocal Rank Fusion, normalizes the rank signal,
-then blends in a transparent effective score:
+`recall()` builds vector and full-text candidate sets, fuses them with Reciprocal
+Rank Fusion, normalizes the fused signal, and blends a transparent effective score:
 
 ```text
 effective_score =
-  base_importance
-  + log-damped usage
+  frozen base importance
+  + log-damped access usage
   - bounded age penalty
 ```
 
-The API returns `rrf_norm`, `effective_score`, and `final_score` so callers can see
-why an item ranked. Because scoring is transparent, a caller that wants a stricter
-result set can drop rows below a `final_score` floor itself — the service returns
-the ranked candidates; the caller brings the judgement.
+The response returns `rrf_norm`, `effective_score`, and `final_score`.
 
-## Deduplication and Compaction
+## Duplicate And Lifecycle Rules
 
-Duplicate handling has two layers:
-
-1. **Exact duplicates** are prevented at write time. `content_hash` is a generated
-   `sha256(content)` column and `memories_namespace_hash_unique` makes
-   `(namespace, content_hash)` unique, so `remember` upserts identical content
-   instead of creating a second row.
-2. **Semantic near-duplicates** — the same fact phrased differently — are collapsed
-   by the optional `compact_memories()` maintenance function
-   (`0003_optional_compaction.sql`). Within a namespace it keeps the strongest row
-   (by `base_importance`, then usage, then age) and supersedes weaker near-duplicates
-   into it, reusing the existing lifecycle (`superseded_by` + `is_active = false`).
-   It is `dry_run` by default, fully recoverable, and opt-in — see
-   [OPERATIONS.md](OPERATIONS.md).
-
-This keeps recall from returning three phrasings of one memory without adding any
-new state to the data model.
+- `(namespace, sha256(content))` blocks exact duplicates.
+- Duplicate remember calls return the existing row and do not rewrite frozen
+  importance or provenance.
+- Optional semantic compaction supersedes weaker near-duplicates.
+- Supersession is recoverable and must stay inside one namespace.
+- Vault secrets use in-place encrypted rotation with an incremented registry version.
 
 ## Model Agnosticism
 
-The memory service never calls a generative model. It only embeds text with the
-free Supabase in-edge `gte-small` model. Any LLM, local model, coding agent, chat
-tool, or non-LLM app can use the same memory.
+The memory service never invokes a generative model and never emits a
+provider-specific prompt. Any caller can consume the same JSON context.
 
-## Extension Points
+The default embedding implementation is intentionally fixed to Supabase
+`gte-small` for zero-cost hosted inference. Embedding spaces are not interchangeable;
+changing that model requires re-embedding every active row and re-running evals.
 
-Safe extensions:
+## Safe Extension Points
 
-- additional adapters that call the same HTTPS API
-- domain-specific seed scripts
-- backup and restore scripts
-- importers that call `remember`
-- dashboards that call `recall` with `track:false`
-- eval fixtures and scoring reports
+- additional adapters that call the HTTPS API
+- import/export and backup tools
+- domain-specific seeders and eval fixtures
+- optional chunk/document schema for very large corpora
+- spec-compliant remote HTTP MCP behind OAuth 2.1
+- additional external secret managers behind the same explicit secret boundary
 
-Extensions that should remain optional:
-
-- local-only embeddings
-- richer provenance tables
-- graph views
-- markdown wiki exports
-- additional auth tokens per consumer
-
-Do not put paid APIs or hosted LLM calls in the default path.
+Paid APIs, direct public Postgres access, remote bearer-only MCP, or a second
+ranking implementation do not belong in the default path.

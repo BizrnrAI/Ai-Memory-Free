@@ -1,0 +1,30 @@
+# Ai-Memory-Free
+
+> Free MIT-licensed, LLM-agnostic memory for any AI project. Self-deploy to a
+> user-owned Supabase project; connect through HTTPS, TypeScript, or MCP.
+
+Canonical repository: https://github.com/BizrnrAI/Ai-Memory-Free
+Creator: Kristian Peter, Chief Automation Officer
+Creator site: https://kristianpeter.com
+License: MIT; no required licensing fee
+Telemetry: none
+
+## Start
+
+- AI entry point: ./AI.md
+- Paste-to-agent install prompt: ./INSTALL_WITH_AI.md
+- Complete AI install contract: ./docs/AI_AGENT_INSTALL.md
+- Documentation index: ./docs/INDEX.md
+- Quick start: ./README.md
+
+## Technical Contract
+
+- Architecture: ./docs/ARCHITECTURE.md
+- Security and Supabase Vault: ./docs/SECURITY.md
+- MCP: ./docs/MCP.md
+- Operations: ./docs/OPERATIONS.md
+- Exact replication: ./docs/REPLICATE.md
+- Canonical implementation guide: ./docs/ZERO_COST_SSOT_MEMORY.md
+
+The memory stores and retrieves ranked evidence. The calling model performs
+reasoning and synthesis. Do not store credentials in semantic memory.

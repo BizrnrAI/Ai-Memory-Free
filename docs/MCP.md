@@ -1,60 +1,82 @@
 # MCP Integration
 
-The MCP server is an adapter over the deployed Edge Function. It does not keep its
-own database and does not implement separate ranking logic.
+The MCP server is a stdio adapter over the deployed Edge Function. It has no
+database connection, storage, ranking, or authorization logic of its own.
 
-## Tools
+## Normal Tools
 
 ### `memory_health`
 
-Checks that the Edge Function is reachable and configured.
+Returns service, embedding strategy, supported actions, and whether the caller used
+bootstrap or scoped authentication.
+
+### `memory_whoami`
+
+Returns the client identity, token prefix, namespace grants, permissions, expiry,
+and auth mode. Use this first when diagnosing an authorization failure.
 
 ### `memory_remember`
 
-Stores a memory.
-
-Arguments:
+Stores a note, fact, decision, correction, reference, or procedure. Arguments:
 
 - `content` string, required
-- `namespace` string, optional
-- `kind` enum, optional: `note`, `fact`, `decision`, `correction`, `reference`,
-  `procedure`
-- `importance` number 0 to 1, optional
-- `source` string, optional
-- `tags` string array, optional
-- `metadata` object, optional
-- `supersedes` string id, optional
+- `namespace` string, optional (`default` if omitted)
+- `kind` enum, optional
+- `importance` number 0..1, optional
+- `source`, `tags`, `metadata`, optional provenance
+- `supersedes` UUID, optional
+
+Exact duplicates return the existing row without rewriting frozen importance.
 
 ### `memory_recall`
 
-Retrieves ranked context.
-
-Arguments:
-
-- `query` string, required
-- `namespace` string, optional
-- `limit` integer 1 to 50, optional
-- `pool` integer 10 to 1000, optional
-- `track` boolean, optional. Set `false` for evals and system reads.
+Returns ranked raw context. Arguments: `query`, optional `namespace`, `limit`,
+`pool`, and `track`. Set `track:false` for eval/system reads.
 
 ### `memory_retire`
 
-Marks a memory inactive.
+Retires a memory without deleting provenance.
 
 ### `memory_supersede`
 
-Marks an old memory superseded by a new memory.
+Links an old row to an active replacement in the same namespace.
+
+## Secret Tools (Explicit Opt-In)
+
+Set `MCP_ENABLE_SECRET_TOOLS=true` to register:
+
+- `memory_secret_store`
+- `memory_secret_get`
+- `memory_secret_list`
+- `memory_secret_retire`
+
+The API token must separately hold matching `secrets:*` permissions and a grant for
+the namespace. List results never contain plaintext or Vault ciphertext.
+
+Enable these tools only for a dedicated MCP client whose operator understands that
+`memory_secret_get` places decrypted plaintext in the MCP result and potentially the
+model context. Supabase Vault protects storage; it cannot protect a value after an
+authorized caller requests decryption.
 
 ## Local Run
 
 ```bash
-npm install
+npm ci
 MEMORY_API_URL="https://YOUR_PROJECT_REF.supabase.co/functions/v1/memory" \
-MEMORY_TOKEN="..." \
+MEMORY_TOKEN="amf_scoped_client_token" \
 npm run mcp
 ```
 
-## Claude Desktop / Codex Style Config
+Dedicated secret-capable process:
+
+```bash
+MCP_ENABLE_SECRET_TOOLS=true \
+MEMORY_API_URL="$MEMORY_API_URL" \
+MEMORY_TOKEN="$SECRET_OPERATOR_TOKEN" \
+npm run mcp
+```
+
+## Client Configuration
 
 ```json
 {
@@ -64,12 +86,44 @@ npm run mcp
       "args": ["--prefix", "/absolute/path/to/Ai-Memory-Free", "run", "mcp"],
       "env": {
         "MEMORY_API_URL": "https://YOUR_PROJECT_REF.supabase.co/functions/v1/memory",
-        "MEMORY_TOKEN": "your-token"
+        "MEMORY_TOKEN": "amf_scoped_client_token"
       }
     }
   }
 }
 ```
 
-Keep `MEMORY_TOKEN` out of git. Use the client secret store for your MCP client
-when one is available.
+Use the MCP client's operating-system secret store when available. Never commit the
+token in a shared configuration file.
+
+## Scaffold An Existing Repository
+
+From the Ai-Memory-Free checkout, preview a model-neutral target-repo integration:
+
+```bash
+npm run integrate -- \
+  --target /absolute/path/to/your-project \
+  --namespace your-project \
+  --api-url https://YOUR_PROJECT_REF.supabase.co/functions/v1/memory
+```
+
+The command is dry-run by default. Add `--write` only after reviewing the three
+planned `.ai-memory-free/` files. It never writes a token or edits existing source,
+package, or agent instruction files.
+
+## Outside Services
+
+Any service capable of running a stdio MCP subprocess can run this adapter with its
+own least-privilege token. Services that do not support MCP can call the same HTTPS
+API through `@ai-memory-free/client`.
+
+This repository intentionally does not expose a remote HTTP MCP endpoint with a
+static bearer token. Current MCP authorization guidance distinguishes local stdio
+(environment credentials) from hosted HTTP (OAuth 2.1 and protected-resource
+metadata). A secure hosted MCP deployment should add a compliant authorization
+layer in front of the same API, not bypass it or fork the memory implementation.
+
+References:
+
+- [MCP authorization](https://modelcontextprotocol.io/specification/draft/basic/authorization)
+- [MCP transports](https://modelcontextprotocol.io/specification/draft/basic/transports)

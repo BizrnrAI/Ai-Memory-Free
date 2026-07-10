@@ -8,7 +8,7 @@ const client = new MemoryClient();
 
 const server = new McpServer({
   name: 'ai-memory-free',
-  version: '0.1.0',
+  version: '0.2.0',
 });
 
 server.tool(
@@ -16,6 +16,13 @@ server.tool(
   'Check the Ai-Memory-Free service health and supported actions.',
   {},
   async () => asText(await client.health()),
+);
+
+server.tool(
+  'memory_whoami',
+  'Show the authenticated client identity, namespace grants, permissions, expiry, and auth mode.',
+  {},
+  async () => asText(await client.whoAmI()),
 );
 
 server.tool(
@@ -66,6 +73,54 @@ server.tool(
   },
   async (args) => asText(await client.supersede(args.old_id, args.new_id)),
 );
+
+// Secret tools are deliberately absent unless the operator opts in. This keeps a
+// general-purpose LLM client from being offered credential-handling capabilities
+// merely because its API token happens to have a broad grant.
+if (process.env.MCP_ENABLE_SECRET_TOOLS === 'true') {
+  server.tool(
+    'memory_secret_store',
+    'Encrypt and store a recoverable secret in Supabase Vault. Requires secrets:write.',
+    {
+      namespace: z.string().optional(),
+      name: z.string().regex(/^[a-zA-Z0-9_.:-]{1,128}$/),
+      secret: z.string().min(1).max(16_384),
+      description: z.string().max(2048).optional(),
+      metadata: z.record(z.unknown()).optional(),
+    },
+    async (args) => asText(await client.storeSecret(args)),
+  );
+
+  server.tool(
+    'memory_secret_get',
+    'Decrypt and return a Supabase Vault secret. Requires secrets:read; use only in a dedicated trusted MCP process.',
+    {
+      namespace: z.string().optional(),
+      name: z.string().regex(/^[a-zA-Z0-9_.:-]{1,128}$/),
+    },
+    async (args) => asText(await client.getSecret(args)),
+  );
+
+  server.tool(
+    'memory_secret_list',
+    'List encrypted-secret metadata only. Secret values and Vault ciphertext are never returned.',
+    {
+      namespace: z.string().optional(),
+      include_retired: z.boolean().optional(),
+    },
+    async (args) => asText(await client.listSecrets(args.namespace, args.include_retired)),
+  );
+
+  server.tool(
+    'memory_secret_retire',
+    'Retire an encrypted secret without deleting its Vault ciphertext. Requires secrets:admin.',
+    {
+      namespace: z.string().optional(),
+      name: z.string().regex(/^[a-zA-Z0-9_.:-]{1,128}$/),
+    },
+    async (args) => asText(await client.retireSecret(args.name, args.namespace)),
+  );
+}
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
