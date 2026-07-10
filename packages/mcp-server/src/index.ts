@@ -8,7 +8,7 @@ const client = new MemoryClient();
 
 const server = new McpServer({
   name: 'ai-memory-free',
-  version: '0.2.0',
+  version: '1.2.0',
 });
 
 server.tool(
@@ -37,8 +37,25 @@ server.tool(
     tags: z.array(z.string()).optional(),
     metadata: z.record(z.unknown()).optional(),
     supersedes: z.string().optional(),
+    source_system: z.string().max(128).optional(),
+    external_id: z.string().max(512).optional(),
   },
   async (args) => asText(await client.remember(args)),
+);
+
+server.tool(
+  'memory_remember_batch',
+  'Store up to 50 idempotent durable memories in one request.',
+  {
+    items: z.array(z.object({
+      content: z.string().min(1).max(100_000), namespace: z.string().optional(),
+      kind: z.enum(['note', 'fact', 'decision', 'correction', 'reference', 'procedure']).optional(),
+      importance: z.number().min(0).max(1).optional(), source: z.string().optional(),
+      tags: z.array(z.string()).optional(), metadata: z.record(z.unknown()).optional(),
+      source_system: z.string().max(128).optional(), external_id: z.string().max(512).optional(),
+    })).min(1).max(50),
+  },
+  async (args) => asText(await client.rememberBatch(args.items)),
 );
 
 server.tool(
@@ -52,6 +69,110 @@ server.tool(
     track: z.boolean().optional(),
   },
   async (args) => asText(await client.recall(args)),
+);
+
+server.tool(
+  'memory_context',
+  'Build deterministic, budgeted evidence across explicitly authorized namespaces.',
+  {
+    query: z.string().min(1).max(20_000),
+    namespaces: z.array(z.string()).min(1).max(8).optional(),
+    max_chars: z.number().int().min(1000).max(100_000).optional(),
+    per_namespace_limit: z.number().int().min(1).max(20).optional(),
+    include_events: z.boolean().optional(),
+  },
+  async (args) => asText(await client.context(args)),
+);
+
+server.tool(
+  'memory_event_append',
+  'Append a tool/session outcome to the optional activity journal. Never store chain-of-thought or secrets.',
+  {
+    namespace: z.string().optional(), event_type: z.string().min(1).max(128),
+    summary: z.string().min(1).max(20_000), agent_id: z.string().max(256).optional(),
+    session_id: z.string().max(256).optional(), tool_name: z.string().max(256).optional(),
+    source_system: z.string().max(128).optional(), external_id: z.string().max(512).optional(),
+    payload: z.record(z.unknown()).optional(), occurred_at: z.string().optional(),
+  },
+  async (args) => asText(await client.appendEvent(args)),
+);
+
+server.tool(
+  'memory_event_list',
+  'List recent activity events without semantic-memory pollution.',
+  { namespace: z.string().optional(), limit: z.number().int().min(1).max(200).optional() },
+  async (args) => asText(await client.listEvents(args.namespace, args.limit)),
+);
+
+server.tool(
+  'memory_source_upsert',
+  'Register provenance, confidence, freshness, and validity for a source.',
+  {
+    namespace: z.string().optional(), uri: z.string().min(1).max(2048), source_type: z.string().max(128).optional(),
+    title: z.string().max(512).optional(), checksum: z.string().max(256).optional(),
+    confidence: z.number().min(0).max(1).optional(), observed_at: z.string().optional(),
+    valid_from: z.string().optional(), valid_until: z.string().optional(), last_verified_at: z.string().optional(),
+    metadata: z.record(z.unknown()).optional(),
+  },
+  async (args) => asText(await client.upsertSource(args)),
+);
+
+server.tool(
+  'memory_source_link',
+  'Link a source record to a memory as supporting, derived, or verifying evidence.',
+  { source_id: z.string().uuid(), memory_id: z.string().uuid(), relation: z.enum(['supports', 'derived_from', 'verifies']).optional() },
+  async (args) => asText(await client.linkSource(args)),
+);
+
+server.tool(
+  'memory_link_create',
+  'Create a supports, contradicts, derived-from, or related-to evidence relationship.',
+  {
+    source_id: z.string().uuid(), memory_id: z.string().uuid(),
+    relation: z.enum(['supports', 'contradicts', 'derived_from', 'related_to']), note: z.string().max(2048).optional(),
+  },
+  async (args) => asText(await client.createLink(args)),
+);
+
+server.tool(
+  'memory_link_list',
+  'List active evidence and contradiction relationships.',
+  { namespace: z.string().optional(), limit: z.number().int().min(1).max(500).optional() },
+  async (args) => asText(await client.listLinks(args.namespace, args.limit)),
+);
+
+server.tool(
+  'memory_link_resolve',
+  'Resolve a relationship without changing either memory lifecycle.',
+  { link_id: z.string().uuid(), note: z.string().max(2048).optional() },
+  async (args) => asText(await client.resolveLink(args.link_id, args.note)),
+);
+
+server.tool(
+  'memory_document_ingest',
+  'Ingest bounded text into the optional document/chunk module.',
+  {
+    namespace: z.string().optional(), title: z.string().min(1).max(512), content: z.string().min(1).max(100_000),
+    source_uri: z.string().max(2048).optional(), media_type: z.string().max(128).optional(), metadata: z.record(z.unknown()).optional(),
+  },
+  async (args) => asText(await client.ingestDocument(args)),
+);
+
+server.tool(
+  'memory_document_search',
+  'Search optional document chunks with the same hybrid retrieval principles.',
+  {
+    namespace: z.string().optional(), query: z.string().min(1).max(20_000),
+    limit: z.number().int().min(1).max(50).optional(), pool: z.number().int().min(10).max(500).optional(),
+  },
+  async (args) => asText(await client.searchDocuments(args)),
+);
+
+server.tool(
+  'memory_maintenance_status',
+  'Show namespace counts and module/profile status without returning stored content.',
+  { namespace: z.string().optional() },
+  async (args) => asText(await client.maintenanceStatus(args.namespace)),
 );
 
 server.tool(

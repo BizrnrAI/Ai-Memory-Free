@@ -5,6 +5,9 @@ type Fixture = {
   query: string;
   expected_ids: string[];
   namespace?: string;
+  expected_absent_ids?: string[];
+  expected_top_id?: string;
+  minimum_final_score?: number;
 };
 
 const file = process.env.MEMORY_EVAL_FIXTURES ?? 'eval/fixtures.example.json';
@@ -36,7 +39,11 @@ for (const fixture of fixtures) {
   });
   const rankedIds = response.results.map((row) => row.id);
   const ids = new Set(rankedIds);
-  const ok = fixture.expected_ids.every((id) => ids.has(id));
+  const absentOk = (fixture.expected_absent_ids ?? []).every((id) => !ids.has(id));
+  const topOk = !fixture.expected_top_id || rankedIds[0] === fixture.expected_top_id;
+  const scoreOk = fixture.minimum_final_score === undefined ||
+    Number(response.results[0]?.final_score ?? 0) >= fixture.minimum_final_score;
+  const ok = fixture.expected_ids.every((id) => ids.has(id)) && absentOk && topOk && scoreOk;
   if (ok) passed += 1;
   const ranks = fixture.expected_ids
     .map((id) => rankedIds.indexOf(id) + 1)
@@ -47,6 +54,9 @@ for (const fixture of fixtures) {
   if (!ok) {
     console.log(`  expected: ${fixture.expected_ids.join(', ')}`);
     console.log(`  received: ${response.results.map((row) => row.id).join(', ')}`);
+    if (!absentOk) console.log(`  forbidden ids returned: ${fixture.expected_absent_ids?.filter((id) => ids.has(id)).join(', ')}`);
+    if (!topOk) console.log(`  expected top id: ${fixture.expected_top_id ?? ''}`);
+    if (!scoreOk) console.log(`  top score below: ${fixture.minimum_final_score}`);
   }
 }
 

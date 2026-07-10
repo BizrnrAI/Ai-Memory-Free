@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/BizrnrAI/Ai-Memory-Free/schemas/module-manifest.schema.json",
+  "title": "Ai-Memory-Free module manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "version", "optional", "actions"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "optional": { "type": "boolean" },
+    "actions": { "type": "array", "uniqueItems": true, "items": { "type": "string" } }
+  }
+}

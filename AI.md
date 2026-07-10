@@ -12,7 +12,9 @@ If the user asks you to install, deploy, connect, or evaluate this memory system
 3. Choose the deployment or existing-project integration path described there.
 4. Never request, print, log, or commit a plaintext token or secret.
 5. Make the smallest changes needed in the target project.
-6. Verify identity, write, recall, forbidden-namespace behavior, and secret isolation.
+6. Verify identity, idempotent write, recall, forbidden namespaces, events,
+   provenance, relationships, document search, context budgets, portability, and
+   secret isolation.
 7. Report exactly what changed, what was verified, and what still requires a human.
 
 For a ready-to-paste user prompt, see [INSTALL_WITH_AI.md](INSTALL_WITH_AI.md).

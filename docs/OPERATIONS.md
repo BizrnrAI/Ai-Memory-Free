@@ -14,6 +14,10 @@ production databases. Migration `0004` enables Supabase Vault and is required fo
 scoped clients, encrypted secrets, audit events, rate limits, and cross-namespace
 supersession protection.
 
+Migration `0005` adds v1.2 modules. It is additive and leaves the v0.2 memory table,
+inline embeddings, actions, and tokens compatible. Follow
+[UPGRADE_V1_2.md](UPGRADE_V1_2.md) for the effect checks.
+
 ## Provision A Client
 
 ```bash
@@ -158,6 +162,17 @@ select pg_size_pretty(pg_database_size(current_database()));
 `MEMORY_AUDIT_READS` defaults to false so reads do not consume audit space. Rate
 limit buckets automatically prune after two days.
 
+For a safe namespace-scoped overview, call `maintenance_status`. It reports counts,
+inactive memory, unverified sources, modules, and the active embedding profile
+without returning stored content. `embedding_reindex` requires `memory:admin` and
+processes at most fifty rows per call.
+
+## Portable Copies
+
+Use `npm run portable` for checksummed, provider-mobility exports and
+[PORTABILITY.md](PORTABILITY.md) for the restore procedure. Portable files exclude
+security state but still contain memory content and must be encrypted at rest.
+
 ## Optional Memory Maintenance
 
 `0002_optional_maintenance.sql` installs decay and expiry cron jobs.
@@ -182,6 +197,10 @@ MEMORY_EVAL_FIXTURES=eval/fixtures.local.json npm run eval
 
 Ranking, embedding, chunking, or compaction changes require an updated eval or a
 written reason in `docs/DECISIONS.md`.
+
+v1.2 fixtures may additionally assert forbidden IDs, the expected top ID, and a
+minimum top score. Use these gates for stale/conflicting knowledge and profile
+migrations.
 
 ## Incident Checklist
 

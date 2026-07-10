@@ -9,6 +9,8 @@ export type RememberInput = {
   tags?: string[];
   metadata?: Record<string, unknown>;
   supersedes?: string;
+  source_system?: string;
+  external_id?: string;
 };
 
 export type RecallInput = {
@@ -93,10 +95,14 @@ export class MemoryClient {
       ok: boolean;
       service: string;
       actions: string[];
-      auth_mode: 'bootstrap' | 'scoped';
+      version: string;
+      protocol_version: string;
+      auth_mode: 'bootstrap' | 'scoped' | 'oauth';
       embedding_model: string;
       embedding_dimensions: number;
       embedding_strategy: string;
+      embedding_profile: string;
+      modules: Array<{ id: string; version: string; optional: boolean; actions: string[] }>;
     }>({ action: 'health' });
   }
 
@@ -110,7 +116,7 @@ export class MemoryClient {
         allowed_namespaces: string[];
         permissions: string[];
         expires_at: string | null;
-        auth_mode: 'bootstrap' | 'scoped';
+        auth_mode: 'bootstrap' | 'scoped' | 'oauth';
       };
     }>({ action: 'whoami' });
   }
@@ -127,6 +133,76 @@ export class MemoryClient {
       action: 'recall',
       ...input,
     });
+  }
+
+  async rememberBatch(items: RememberInput[]) {
+    return await this.call<{ ok: boolean; results: Array<{ created: boolean; memory: { id: string } }> }>(
+      'remember_batch', { items },
+    );
+  }
+
+  async context(input: {
+    query: string;
+    namespaces?: string[];
+    max_chars?: number;
+    per_namespace_limit?: number;
+    include_events?: boolean;
+  }) {
+    return await this.call<Record<string, unknown>>('context', input);
+  }
+
+  async appendEvent(input: Record<string, unknown>) {
+    return await this.call<Record<string, unknown>>('event_append', input);
+  }
+
+  async listEvents(namespace?: string, limit?: number) {
+    return await this.call<Record<string, unknown>>('event_list', { namespace, limit });
+  }
+
+  async upsertSource(input: Record<string, unknown>) {
+    return await this.call<Record<string, unknown>>('source_upsert', input);
+  }
+
+  async linkSource(input: { source_id: string; memory_id: string; relation?: string }) {
+    return await this.call<Record<string, unknown>>('source_link', input);
+  }
+
+  async createLink(input: Record<string, unknown>) {
+    return await this.call<Record<string, unknown>>('link_create', input);
+  }
+
+  async listLinks(namespace?: string, limit?: number) {
+    return await this.call<Record<string, unknown>>('link_list', { namespace, limit });
+  }
+
+  async resolveLink(linkId: string, note?: string) {
+    return await this.call<Record<string, unknown>>('link_resolve', { link_id: linkId, note });
+  }
+
+  async ingestDocument(input: Record<string, unknown>) {
+    return await this.call<Record<string, unknown>>('document_ingest', input);
+  }
+
+  async searchDocuments(input: Record<string, unknown>) {
+    return await this.call<Record<string, unknown>>('document_search', input);
+  }
+
+  async maintenanceStatus(namespace?: string) {
+    return await this.call<Record<string, unknown>>('maintenance_status', { namespace });
+  }
+
+  async reindexEmbeddings(namespace?: string, offset?: number, limit?: number) {
+    return await this.call<Record<string, unknown>>('embedding_reindex', { namespace, offset, limit });
+  }
+
+  async portableExport(input: { namespace: string; resource: string; offset?: number; limit?: number }) {
+    return await this.call<{
+      ok: boolean; resource: string; next_offset: number | null; records: Record<string, unknown>[];
+    }>('portable_export', input);
+  }
+
+  async portableImport(input: { namespace: string; resource: string; records: Record<string, unknown>[] }) {
+    return await this.call<Record<string, unknown>>('portable_import', input);
   }
 
   async retire(id: string, reason?: string) {
@@ -175,6 +251,10 @@ export class MemoryClient {
     });
   }
 
+  async call<T>(action: string, input: Record<string, unknown> = {}): Promise<T> {
+    return await this.request<T>({ action, ...input });
+  }
+
   private async request<T>(body: Record<string, unknown>): Promise<T> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -185,7 +265,7 @@ export class MemoryClient {
           authorization: `Bearer ${this.token}`,
           'content-type': 'application/json',
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ protocol_version: '1', ...body }),
         signal: controller.signal,
       });
 

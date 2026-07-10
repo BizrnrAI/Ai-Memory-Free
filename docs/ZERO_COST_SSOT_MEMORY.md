@@ -16,6 +16,8 @@ The system must provide:
 - an isolated encrypted-secret partition with explicit decryption authorization
 - RLS, revoked public privileges, bounded inputs, rate limits, and audit metadata
 - no paid model API, managed vector database, queue, or always-on default server
+- protocol-versioned optional modules for activity, provenance, relationships,
+  documents, portability, maintenance, and OAuth MCP
 
 ## 2. Two Hosted Components
 
@@ -37,7 +39,8 @@ Supabase Postgres
 ```
 
 Everything hosted lives in one free Supabase project. The optional MCP adapter is a
-local stdio process and calls the same HTTPS function.
+local stdio process and calls the same HTTPS function. v1.2 may also deploy an
+optional remote MCP Edge Function protected by Supabase Auth OAuth 2.1.
 
 ## 3. Precise Model Agnosticism
 
@@ -48,6 +51,11 @@ future LLM can consume the same ranked context.
 Semantic vectors do require a fixed embedding space. The no-cost default uses
 Supabase Edge Runtime `gte-small` (384 dimensions). Changing it requires
 re-embedding all active rows and re-running retrieval evals.
+
+v1.2 exposes this default as profile `gte-small-v1` through an `EmbeddingAdapter`.
+Profile vectors dual-write to an additive table; the original vector remains the
+compatible recall path. Future profiles must own their dimensions, index, reindex,
+and eval baseline.
 
 Supabase documents `gte-small` as English-focused and capped at 512 input tokens.
 Long memories therefore use bounded multi-chunk averaging: up to eight distributed

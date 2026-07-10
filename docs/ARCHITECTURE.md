@@ -24,6 +24,14 @@ Supabase Postgres
   vault.secrets           authenticated encrypted secret payloads
   memory_audit_log        actor/action/resource metadata
   memory_rate_limit_buckets
+  memory_embeddings       optional profile-specific vectors
+  memory_events           append-only agent/tool outcomes
+  memory_sources          confidence, freshness, and validity
+  memory_source_links     source-to-memory evidence
+  memory_links            supports/contradicts/derived/related edges
+  memory_documents        bounded raw text documents
+  memory_document_chunks  separate hybrid document retrieval
+  memory_oauth_grants     explicit remote MCP user grants
 ```
 
 ## Trust Boundaries
@@ -60,6 +68,10 @@ Encrypted-secret actions:
 
 Secret actions are a separate authorization domain. A client with `memory:admin`
 does not automatically receive secret access.
+
+Protocol v1 capability discovery also advertises batch/context, events,
+provenance, relationships, documents, portability, maintenance, and remote MCP.
+See [MODULES.md](MODULES.md) for the complete action ownership map.
 
 ## Authorization Model
 
@@ -148,6 +160,22 @@ provider-specific prompt. Any caller can consume the same JSON context.
 The default embedding implementation is intentionally fixed to Supabase
 `gte-small` for zero-cost hosted inference. Embedding spaces are not interchangeable;
 changing that model requires re-embedding every active row and re-running evals.
+
+v1.2 places inference behind an `EmbeddingAdapter` and dual-writes the default
+`gte-small-v1` profile to `memory_embeddings`. The original inline vector remains
+compatible and authoritative for default recall. A future profile owns its model,
+dimensions, index, reindex procedure, and eval baseline; incompatible profiles are
+never compared.
+
+## Core And Modules
+
+Protocol v1 is the stable seam. Optional modules reuse core authentication,
+namespace authorization, request bounds, rate limits, audits, and errors. Their
+tables are independently RLS-locked and never introduce another memory lifecycle.
+
+The event journal captures activity, the memory table captures durable truth, and
+the document module captures large source material. This lets agents retain broad
+activity without diluting semantic recall.
 
 ## Safe Extension Points
 

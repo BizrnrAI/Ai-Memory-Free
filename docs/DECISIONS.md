@@ -141,3 +141,41 @@ guidance dominant.
 Reasoning: the repository is both public infrastructure and proof of work for the
 Chief Automation Officer brand. Factual, consistent attribution builds discovery
 without gated leadware, invasive telemetry, or advertising inside the tool.
+
+## 2026-07-10 - v1.2 Uses A Stable Core And Optional Modules
+
+Decision: keep protocol v1 backwards compatible and register capabilities for
+events, provenance, relationships, documents, maintenance, Vault, and remote MCP.
+Each module owns additive tables and actions but reuses the core security boundary.
+
+Reasoning: modularity is a stable contract at seams, not a plugin framework. A
+small manifest and action registry make upgrades discoverable without package
+loading, extra services, or duplicate ranking.
+
+## 2026-07-10 - Activity, Documents, And Durable Truth Stay Separate
+
+Decision: use `memory_events` for agent/tool outcomes, `memory_documents` plus
+chunks for source corpora, and `memories` for curated cross-session truth.
+
+Reasoning: storing everything in the semantic table makes relevance and lifecycle
+unmanageable. Separate modules preserve activity and source text while keeping
+core recall precise. Chain-of-thought and secrets remain prohibited.
+
+## 2026-07-10 - Embedding Profiles Are Additive And Explicit
+
+Decision: introduce an adapter contract and profile-specific vector table without
+removing the v0.2 inline vector. `gte-small-v1` remains the built-in default.
+
+Reasoning: a destructive vector rewrite would make upgrades fragile. Dual-write
+and bounded reindex batches establish a future seam while preserving the no-cost
+path and preventing incompatible vector spaces from mixing.
+
+## 2026-07-10 - Remote MCP Uses Supabase OAuth
+
+Decision: provide remote MCP as an optional sessionless HTTP adapter using
+Supabase Auth OAuth 2.1 and explicit `memory_oauth_grants`. Remote secret tools are
+absent.
+
+Reasoning: hosted MCP adoption matters, but a shared bearer token is not a secure
+authorization design. Supabase provides the authorization server inside the same
+platform; the MCP function remains only a protected protocol adapter.

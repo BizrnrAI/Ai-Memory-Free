@@ -12,7 +12,15 @@ Choose the shortest path that matches your goal.
 ## Build And Integrate
 
 - [Architecture](ARCHITECTURE.md)
+- [v1.2 module contract](MODULES.md)
+- [Protocol v1](PROTOCOL.md)
+- [Agent activity events](EVENTS.md)
+- [Provenance and relationships](PROVENANCE.md)
+- [Document memory](DOCUMENTS.md)
+- [Portable export/import](PORTABILITY.md)
 - [MCP integration](MCP.md)
+- [Remote OAuth MCP](REMOTE_MCP.md)
+- [Upgrade from v0.2](UPGRADE_V1_2.md)
 - [Operations](OPERATIONS.md)
 - [Exact replication checklist](REPLICATE.md)
 - [Canonical implementation guide](ZERO_COST_SSOT_MEMORY.md)
@@ -32,3 +40,4 @@ Choose the shortest path that matches your goal.
 - [AI.md](../AI.md) — short routing instructions for any coding agent
 - [llms.txt](../llms.txt) — compact project and documentation map
 - [AGENTS.md](../AGENTS.md) — repository behavior rules
+- [`schemas/`](../schemas/request-v1.schema.json) — protocol, module, and portable contracts

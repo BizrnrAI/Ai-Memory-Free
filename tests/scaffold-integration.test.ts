@@ -13,6 +13,8 @@ test('integration scaffold is model-neutral and never writes a credential', () =
 
   assert.match(combined, /example-project/);
   assert.match(combined, /memory_remember|remember/i);
+  assert.match(combined, /memory_context/);
+  assert.match(combined, /event journal/);
   assert.match(combined, /<set-in-client-secret-store>/);
   assert.doesNotMatch(combined, /amf_[A-Za-z0-9_-]{20,}/);
   assert.doesNotMatch(combined, /OpenAI|Anthropic|Gemini API/);

@@ -11,6 +11,33 @@ architecture while adding the controls required for multiple agents and outside
 services: hashed client credentials, least privilege, namespace enforcement,
 bounded abuse controls, auditable mutations, and Supabase Vault encrypted secrets.
 
+## v1.2 Follow-Up Audit
+
+Follow-up date: 2026-07-10. The twelve roadmap improvements were implemented as
+seven optional modules behind backwards-compatible protocol v1:
+
+| Roadmap area | v1.2 disposition |
+| --- | --- |
+| Versioned contract | Release/protocol/portable versions, module manifests, JSON schemas, action-registry conformance |
+| Portability | Checksummed paginated NDJSON, dry-run/write gates, dependency-ordered import, lifecycle second pass |
+| Embedding profiles | `EmbeddingAdapter`, explicit `gte-small-v1`, additive profile table, bounded reindex |
+| Agent activity | Idempotent append-only events, no default embeddings, no chain-of-thought |
+| Provenance/freshness | Sources with confidence, observation, validity, verification, and memory links |
+| Idempotent ingestion | External keys and bounded batch memory writes |
+| Retrieval regression | Forbidden IDs, expected top ID, minimum score, protocol/module tests |
+| Context bundles | One-to-eight explicit namespaces and a whole-response character budget |
+| Relationships | Database-enforced same-namespace supports/contradicts/derived/related edges |
+| Documents | Isolated raw text/chunks, local safe-text ingester, hybrid chunk recall |
+| Maintenance | Namespace counts, inactive/unverified state, profile status, bounded reindex |
+| Remote MCP | Optional sessionless HTTP adapter using Supabase OAuth 2.1 grants; no secret tools |
+
+The migration was applied on a clean official Supabase Postgres 17 image. All eight
+new tables had RLS enabled with effective anon/authenticated privileges denied. All
+new functions pinned `search_path`; direct anon/authenticated execution was denied;
+trigger lint returned no findings. Functional probes proved event idempotency,
+document FTS recall, and database rejection of cross-namespace relationships and
+document chunks.
+
 ## Findings And Disposition
 
 | Severity | Finding | Disposition |
