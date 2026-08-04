@@ -11,3 +11,4 @@ eval/results/
 eval/*.local.json
 backups/
 *.dump
+supabase/.temp/

@@ -60,6 +60,58 @@ Deno.test('high-confidence credential patterns are kept out of ordinary memory',
   assert(!containsLikelySecret('The docs use Bearer YOUR_TOKEN as a placeholder.'));
 });
 
+// All fixtures below are synthetic. Each is built by concatenation so that no
+// literal in this file can be mistaken for — or grep as — a real credential.
+Deno.test('credential detection covers provider families this deployment handles', () => {
+  const A = 'A'.repeat(64);
+  const a = 'a'.repeat(64);
+  const hex = '0'.repeat(48);
+  const cases: Record<string, string> = {
+    anthropic: 'sk-ant-' + 'api03-' + A,
+    openaiProject: 'sk-proj-' + A,
+    openaiClassic: 'sk-' + A,
+    supabasePat: 'sbp_' + hex,
+    memoryToken: 'amf_' + A,
+    githubFineGrained: 'github_pat_' + A,
+    gitlab: 'glpat-' + 'A'.repeat(24),
+    npm: 'npm_' + 'A'.repeat(36),
+    googleApiKey: 'AIza' + 'A'.repeat(35),
+    awsTemp: 'ASIA' + 'A'.repeat(16),
+    nsec: 'nsec1' + 'a'.repeat(58),
+    ncryptsec: 'ncryptsec1' + 'a'.repeat(100),
+    ageIdentity: 'AGE-SECRET-KEY-1' + 'A'.repeat(58),
+    pemKey: '-----BEGIN OPENSSH PRIVATE KEY-----',
+    pemPlainKey: '-----BEGIN PRIVATE KEY-----',
+    postgresUri: 'postgresql://buzz:' + a.slice(0, 24) + '@db.example.supabase.co:5432/postgres',
+    redisUri: 'rediss://default:' + a.slice(0, 24) + '@cache.example.com:6379',
+    slackWebhook: 'https://hooks.slack.com/services/T00000000/B00000000/' + A.slice(0, 24),
+  };
+  for (const [name, sample] of Object.entries(cases)) {
+    assert(containsLikelySecret(sample), `expected ${name} to be detected`);
+    assert(
+      containsLikelySecret(`the value is ${sample} — do not commit`),
+      `expected ${name} to be detected in surrounding prose`,
+    );
+  }
+});
+
+Deno.test('credential detection does not fire on ordinary technical content', () => {
+  const benign = [
+    'Relay upgraded from sha-ac4fa13 to sha-027a74a with no migrations.',
+    'Commit 1f0eada7c3b19d4e5f6a8b9c0d1e2f3a4b5c6d7e touched two files.',
+    'Community id 3f7c1a92-5b2e-4d18-9a6f-0c8e2b4d7a15 was provisioned.',
+    'sha256 digest e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+    'Set the header to Bearer YOUR_TOKEN before calling the endpoint.',
+    'The docs reference sk-... and AKIA... as redacted placeholders.',
+    'postgresql://localhost:5432/buzz needs no password in trust mode.',
+    'Base64 payload SGVsbG8gd29ybGQsIHRoaXMgaXMgbm90IGEgc2VjcmV0IGF0IGFsbA==',
+    'Namespaces are main, bizrnr, legal, iowa, ahs, shared.',
+  ];
+  for (const sample of benign) {
+    assert(!containsLikelySecret(sample), `false positive on: ${sample}`);
+  }
+});
+
 Deno.test('document chunking is deterministic, bounded, and overlapping', () => {
   const text = Array.from({ length: 80 }, (_, index) => `sentence ${index}.`).join(' ');
   const first = splitDocumentText(text, 240, 24);
@@ -86,8 +138,8 @@ Deno.test('portable resources are an explicit allowlist', () => {
   assert(!isPortableResource('memory_audit_log'));
 });
 
-function assert(condition: unknown): asserts condition {
-  if (!condition) throw new Error('assertion failed');
+function assert(condition: unknown, message?: string): asserts condition {
+  if (!condition) throw new Error(message ? `assertion failed: ${message}` : 'assertion failed');
 }
 
 function assertEquals<T>(actual: T, expected: T) {

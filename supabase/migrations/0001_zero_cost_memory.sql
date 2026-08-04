@@ -1,3 +1,10 @@
+-- Supabase preinstalls pgcrypto into the "extensions" schema, so the statement
+-- below no-ops and digest() is not visible to the migration role. Generated
+-- columns resolve functions at DDL time, so the search_path must be widened
+-- before public.memories is created. Naming a schema that does not exist is
+-- silently ignored by Postgres, so this stays correct on vanilla installs.
+set search_path = public, extensions;
+
 create extension if not exists vector;
 create extension if not exists pg_trgm;
 create extension if not exists pgcrypto;

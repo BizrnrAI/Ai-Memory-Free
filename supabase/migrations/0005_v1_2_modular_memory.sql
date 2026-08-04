@@ -4,6 +4,10 @@
 -- remain intact for backwards compatibility. Optional modules are isolated in
 -- their own tables and can be ignored by installations that only need core memory.
 
+-- See 0001: digest() lives in the "extensions" schema on Supabase and is used
+-- by the memory_documents generated column below.
+set search_path = public, extensions;
+
 alter table public.memories
   add column if not exists source_system text,
   add column if not exists external_id text;
