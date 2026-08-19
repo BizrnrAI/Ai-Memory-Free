@@ -35,7 +35,7 @@ server.tool(
     importance: z.number().min(0).max(1).optional(),
     source: z.string().optional(),
     tags: z.array(z.string()).optional(),
-    metadata: z.record(z.unknown()).optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
     supersedes: z.string().optional(),
     source_system: z.string().max(128).optional(),
     external_id: z.string().max(512).optional(),
@@ -51,7 +51,7 @@ server.tool(
       content: z.string().min(1).max(100_000), namespace: z.string().optional(),
       kind: z.enum(['note', 'fact', 'decision', 'correction', 'reference', 'procedure']).optional(),
       importance: z.number().min(0).max(1).optional(), source: z.string().optional(),
-      tags: z.array(z.string()).optional(), metadata: z.record(z.unknown()).optional(),
+      tags: z.array(z.string()).optional(), metadata: z.record(z.string(), z.unknown()).optional(),
       source_system: z.string().max(128).optional(), external_id: z.string().max(512).optional(),
     })).min(1).max(50),
   },
@@ -92,7 +92,7 @@ server.tool(
     summary: z.string().min(1).max(20_000), agent_id: z.string().max(256).optional(),
     session_id: z.string().max(256).optional(), tool_name: z.string().max(256).optional(),
     source_system: z.string().max(128).optional(), external_id: z.string().max(512).optional(),
-    payload: z.record(z.unknown()).optional(), occurred_at: z.string().optional(),
+    payload: z.record(z.string(), z.unknown()).optional(), occurred_at: z.string().optional(),
   },
   async (args) => asText(await client.appendEvent(args)),
 );
@@ -112,7 +112,7 @@ server.tool(
     title: z.string().max(512).optional(), checksum: z.string().max(256).optional(),
     confidence: z.number().min(0).max(1).optional(), observed_at: z.string().optional(),
     valid_from: z.string().optional(), valid_until: z.string().optional(), last_verified_at: z.string().optional(),
-    metadata: z.record(z.unknown()).optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
   },
   async (args) => asText(await client.upsertSource(args)),
 );
@@ -153,7 +153,7 @@ server.tool(
   'Ingest bounded text into the optional document/chunk module.',
   {
     namespace: z.string().optional(), title: z.string().min(1).max(512), content: z.string().min(1).max(100_000),
-    source_uri: z.string().max(2048).optional(), media_type: z.string().max(128).optional(), metadata: z.record(z.unknown()).optional(),
+    source_uri: z.string().max(2048).optional(), media_type: z.string().max(128).optional(), metadata: z.record(z.string(), z.unknown()).optional(),
   },
   async (args) => asText(await client.ingestDocument(args)),
 );
@@ -207,7 +207,7 @@ if (process.env.MCP_ENABLE_SECRET_TOOLS === 'true') {
       name: z.string().regex(/^[a-zA-Z0-9_.:-]{1,128}$/),
       secret: z.string().min(1).max(16_384),
       description: z.string().max(2048).optional(),
-      metadata: z.record(z.unknown()).optional(),
+      metadata: z.record(z.string(), z.unknown()).optional(),
     },
     async (args) => asText(await client.storeSecret(args)),
   );
