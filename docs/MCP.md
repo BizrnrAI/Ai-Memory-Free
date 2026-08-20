@@ -3,6 +3,15 @@
 The MCP server is a stdio adapter over the deployed Edge Function. It has no
 database connection, storage, ranking, or authorization logic of its own.
 
+## Protocol Support
+
+The adapter is built on `@modelcontextprotocol/server` v2 and serves both MCP
+protocol eras from one process. A client that opts into modern version
+negotiation receives the 2026-07-28 revision; every other client — including
+current Claude, Codex, and Gemini hosts — receives the classic `initialize`
+handshake (2025-06-18 / 2025-11-25) unchanged. No configuration is required and
+no client is dropped.
+
 ## Normal Tools
 
 ### `memory_health`
@@ -139,6 +148,6 @@ layer in front of the same API, not bypass it or fork the memory implementation.
 
 References:
 
-- [MCP authorization](https://modelcontextprotocol.io/specification/draft/basic/authorization)
-- [MCP transports](https://modelcontextprotocol.io/specification/draft/basic/transports)
+- [MCP authorization](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization)
+- [MCP transports](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports)
 - [Optional Supabase OAuth remote MCP](REMOTE_MCP.md)

@@ -3,6 +3,18 @@
 Notable changes are documented here. Versions follow semantic versioning after the
 first public release.
 
+## Unreleased
+
+### Changed
+
+- stdio MCP adapter migrated from `@modelcontextprotocol/sdk` 1.x to
+  `@modelcontextprotocol/server` 2.0: `registerTool` with explicit `z.object()`
+  schemas, and `serveStdio` per-connection era negotiation — modern clients get
+  protocol 2026-07-28, everyone else keeps the classic `initialize` handshake
+- remote OAuth MCP Edge Function audited against the MCP 2026-07-28 revision:
+  no SSE or Dynamic Client Registration surface exists, so no code change was
+  required; posture documented in docs/REMOTE_MCP.md
+
 ## 1.2.0 - 2026-07-10
 
 ### Added

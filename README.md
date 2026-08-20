@@ -184,6 +184,9 @@ Encrypted-secret tools are absent unless the operator explicitly sets
 `MCP_ENABLE_SECRET_TOOLS=true` **and** gives that client the matching secret
 permissions. See [docs/MCP.md](docs/MCP.md).
 
+The adapter is built on `@modelcontextprotocol/server` v2 and negotiates the MCP
+protocol era per connection: modern clients receive the 2026-07-28 revision while
+existing hosts keep the classic `initialize` handshake, with no configuration.
 The stdio server follows MCP guidance by reading credentials from its environment.
 Any outside service can run this adapter with its own scoped token. v1.2 also
 provides an optional sessionless HTTP MCP Edge Function protected by
