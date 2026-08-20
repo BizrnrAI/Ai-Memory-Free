@@ -1,6 +1,6 @@
 # Ai-Memory-Free
 
-**Current release: v1.2.0 — protocol v1, eight independently discoverable modules.**
+**Current release: v1.3.0 — protocol v1, eight independently discoverable modules.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-16a34a.svg)](LICENSE)
 [![No paid LLM API required](https://img.shields.io/badge/paid%20LLM%20API-not%20required-2563eb.svg)](docs/FAQ.md#is-ai-memory-free-really-free)
@@ -59,6 +59,7 @@ share the same memory.
 | Upgrade from v0.2 | [v1.2 upgrade guide](docs/UPGRADE_V1_2.md) |
 | Move data between installations | [Portable export/import](docs/PORTABILITY.md) |
 | Call from TypeScript or HTTPS | [Integration choices](docs/AI_AGENT_INSTALL.md#integration-choices) |
+| Call the API from any language | [HTTPS action reference](docs/ACTIONS.md) |
 | Understand security and Vault | [Security model](docs/SECURITY.md) |
 | Browse all documentation | [Documentation index](docs/INDEX.md) |
 
@@ -241,6 +242,7 @@ MEMORY_EVAL_FIXTURES=eval/fixtures.local.json npm run eval
 - `docs/AI_AGENT_INSTALL.md` - deploy/integrate/verify contract for agents
 - `docs/MODULES.md` - stable core/module seams and extension rules
 - `docs/PROTOCOL.md` - protocol v1, capability discovery, and idempotency
+- `docs/ACTIONS.md` - complete HTTPS request/response reference for all actions
 - `docs/EVENTS.md` - safe agent activity journal
 - `docs/PROVENANCE.md` - freshness and evidence relationships
 - `docs/DOCUMENTS.md` - optional text document ingestion and search

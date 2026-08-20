@@ -9,7 +9,7 @@ const client = new MemoryClient();
 function buildServer() {
   const server = new McpServer({
     name: 'ai-memory-free',
-    version: '1.2.0',
+    version: '1.3.0',
   });
 
   server.registerTool(

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { ACTIONS, MODULES, PORTABLE_RESOURCES, PROTOCOL_VERSION, RELEASE_VERSION } from '../supabase/functions/memory/protocol.js';
 
-if (RELEASE_VERSION !== '1.2.0') throw new Error('release version must be 1.2.0');
+if (RELEASE_VERSION !== '1.3.0') throw new Error('release version must be 1.3.0');
 if (PROTOCOL_VERSION !== '1') throw new Error('protocol version must remain backwards-compatible v1');
 if (new Set(ACTIONS).size !== ACTIONS.length) throw new Error('actions must be unique');
 if (new Set(MODULES.map((module) => module.id)).size !== MODULES.length) throw new Error('module ids must be unique');

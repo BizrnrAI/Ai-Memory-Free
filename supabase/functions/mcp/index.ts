@@ -108,7 +108,7 @@ Deno.serve(async (request) => {
       return jsonRpcResult(rpc.id ?? null, {
         protocolVersion: MCP_PROTOCOL_VERSION,
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: 'ai-memory-free-remote', version: '1.2.0' },
+        serverInfo: { name: 'ai-memory-free-remote', version: '1.3.0' },
       });
     }
     return jsonRpcResult(rpc.id ?? null, { tools });
