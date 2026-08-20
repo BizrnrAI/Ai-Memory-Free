@@ -12,3 +12,4 @@ eval/*.local.json
 backups/
 *.dump
 supabase/.temp/
+supabase/.branches/

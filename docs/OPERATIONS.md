@@ -14,6 +14,12 @@ production databases. Migration `0004` enables Supabase Vault and is required fo
 scoped clients, encrypted secrets, audit events, rate limits, and cross-namespace
 supersession protection.
 
+Migration `0008` enables pgvector 0.8+ iterative index scans on the hybrid-search
+functions so namespace-filtered vector recall does not degrade as more namespaces
+share one database. It is guarded: on pgvector below 0.8 it records itself and
+changes nothing, and it can be re-applied after a pgvector upgrade. Versions
+`0006` and `0007` are intentionally unused upstream.
+
 Migration `0005` adds v1.2 modules. It is additive and leaves the v0.2 memory table,
 inline embeddings, actions, and tokens compatible. Follow
 [UPGRADE_V1_2.md](UPGRADE_V1_2.md) for the effect checks.
@@ -152,6 +158,14 @@ in the dump, but backup access should still be restricted.
 Free projects may pause after a low-activity week. A scheduled authenticated
 `health` request can keep a lightly used project active, but verify current vendor
 terms before relying on it.
+
+The repository ships an optional ready-made workflow at
+`.github/workflows/keepalive.yml`. It is disabled by default: add the
+`MEMORY_API_URL` and `MEMORY_TOKEN` repository secrets, then set a repository
+variable `KEEPALIVE_ENABLED` to `true`. It sends one authenticated `health`
+request twice a week. GitHub itself disables scheduled workflows in repositories
+with no activity for sixty days, so a fully idle fork still needs an occasional
+manual run.
 
 Monitor database size:
 
