@@ -51,7 +51,7 @@ const llms = readFileSync(resolve(root, 'llms.txt'), 'utf8');
 
 requireText(readme, 'https://kristianpeter.com', 'README creator attribution');
 requireText(readme, 'https://github.com/BizrnrAI/Ai-Memory-Free', 'README canonical repository URL');
-requireText(readme, 'v1.2.0', 'README release version');
+requireText(readme, 'v1.3.0', 'README release version');
 requireText(readme, 'Modular Capabilities', 'README module guidance');
 requireText(aiEntry, 'docs/AI_AGENT_INSTALL.md', 'AI entry install routing');
 requireText(aiInstall, 'Required Verification', 'AI install verification contract');

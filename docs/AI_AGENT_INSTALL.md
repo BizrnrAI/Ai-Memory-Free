@@ -99,7 +99,7 @@ Use this when the user has no existing Ai-Memory-Free API.
 
 9. Continue with Path B to connect the target repository.
 
-10. Confirm `health` reports release `1.2.0`, protocol `1`,
+10. Confirm `health` reports release `1.3.0`, protocol `1`,
     `gte-small-v1`, and eight module manifests. Do not infer capabilities from the
     repository version when the deployed service reports something else.
 
@@ -185,8 +185,9 @@ published to npm.
 ### HTTPS
 
 Best for any other language. Send JSON POST requests with
-`Authorization: Bearer <scoped token>`. See `README.md` and `docs/MCP.md` for the
-action contract.
+`Authorization: Bearer <scoped token>`. The complete per-action contract —
+fields, bounds, permissions, response shapes, and error codes for all 27
+actions — is [ACTIONS.md](ACTIONS.md).
 
 ## Required Verification
 

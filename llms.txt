@@ -26,6 +26,7 @@ Telemetry: none
 - Exact replication: ./docs/REPLICATE.md
 - Module contract: ./docs/MODULES.md
 - Protocol v1: ./docs/PROTOCOL.md
+- HTTPS action reference: ./docs/ACTIONS.md
 - Portable export/import: ./docs/PORTABILITY.md
 - Events: ./docs/EVENTS.md
 - Provenance and relationships: ./docs/PROVENANCE.md

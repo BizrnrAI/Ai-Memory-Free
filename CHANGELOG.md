@@ -3,9 +3,14 @@
 Notable changes are documented here. Versions follow semantic versioning after the
 first public release.
 
-## Unreleased
+## 1.3.0 - 2026-08-19
 
 ### Added
+
+- `docs/ACTIONS.md`: complete HTTPS request/response reference for all 27
+  protocol v1 actions — fields, bounds, permissions, idempotency semantics, and
+  error codes — so any language or agent can integrate without reading the
+  Edge Function source
 
 - migration `0008`: pgvector 0.8+ iterative HNSW index scans on the hybrid-search
   functions (guarded, idempotent, per-function scope) so namespace-filtered vector

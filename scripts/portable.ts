@@ -26,7 +26,7 @@ async function exportPortable() {
   }
   const payload = records.map((record) => JSON.stringify(record)).join('\n');
   const header = {
-    format: 'ai-memory-free-portable', version: 1, release: '1.2.0', namespace,
+    format: 'ai-memory-free-portable', version: 1, release: '1.3.0', namespace,
     generated_at: new Date().toISOString(), resources, record_count: records.length,
     payload_sha256: sha256(payload),
     excluded: ['secrets', 'vault_ciphertext', 'credentials', 'embeddings', 'audit_log', 'rate_limits'],

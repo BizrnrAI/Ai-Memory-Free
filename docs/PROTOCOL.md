@@ -6,7 +6,8 @@ are ordinary JSON and never contain model-specific prompt instructions.
 
 Discover the live contract with `health`. It returns release version, protocol,
 portable format, embedding profile, modules, and actions. The canonical request,
-module, and portable header schemas are in `schemas/`.
+module, and portable header schemas are in `schemas/`. The complete per-action
+request/response reference is [ACTIONS.md](ACTIONS.md).
 
 ## Core Extension Rules
 

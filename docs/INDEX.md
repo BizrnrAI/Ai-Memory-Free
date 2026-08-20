@@ -14,6 +14,7 @@ Choose the shortest path that matches your goal.
 - [Architecture](ARCHITECTURE.md)
 - [v1.2 module contract](MODULES.md)
 - [Protocol v1](PROTOCOL.md)
+- [HTTPS action reference](ACTIONS.md)
 - [Agent activity events](EVENTS.md)
 - [Provenance and relationships](PROVENANCE.md)
 - [Document memory](DOCUMENTS.md)
