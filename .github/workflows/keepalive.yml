@@ -1,0 +1,42 @@
+name: Keepalive
+
+# Supabase pauses free projects after roughly one week without activity. This
+# optional workflow sends one authenticated health request twice a week so a
+# lightly used deployment stays active.
+#
+# Disabled by default. To enable on your fork or deployment repository:
+#   1. Add repository secrets MEMORY_API_URL and MEMORY_TOKEN
+#      (any scoped client token works; health requires no write permission).
+#   2. Add a repository variable KEEPALIVE_ENABLED with the value: true
+#
+# Note: GitHub disables scheduled workflows on repositories with no activity
+# for 60 days, and vendor pause policy can change — see docs/OPERATIONS.md.
+
+permissions:
+  contents: read
+
+on:
+  schedule:
+    - cron: '17 6 * * 1,4'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    if: ${{ vars.KEEPALIVE_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Authenticated health request
+        env:
+          MEMORY_API_URL: ${{ secrets.MEMORY_API_URL }}
+          MEMORY_TOKEN: ${{ secrets.MEMORY_TOKEN }}
+        run: |
+          if [ -z "$MEMORY_API_URL" ] || [ -z "$MEMORY_TOKEN" ]; then
+            echo "MEMORY_API_URL and MEMORY_TOKEN secrets are not configured." >&2
+            exit 1
+          fi
+          curl --fail-with-body -sS "$MEMORY_API_URL" \
+            -H "authorization: Bearer $MEMORY_TOKEN" \
+            -H "content-type: application/json" \
+            -d '{"action":"health"}' \
+            | head -c 2000

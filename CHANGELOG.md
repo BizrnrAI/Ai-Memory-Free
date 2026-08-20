@@ -5,6 +5,16 @@ first public release.
 
 ## Unreleased
 
+### Added
+
+- migration `0008`: pgvector 0.8+ iterative HNSW index scans on the hybrid-search
+  functions (guarded, idempotent, per-function scope) so namespace-filtered vector
+  recall stays complete as namespaces multiply; verified against a local Supabase
+  stack as the non-superuser migration role
+- optional `.github/workflows/keepalive.yml` scheduled health ping to keep a
+  lightly used free-tier project from pausing; disabled unless the operator sets
+  the `KEEPALIVE_ENABLED` repository variable and token secrets
+
 ### Changed
 
 - stdio MCP adapter migrated from `@modelcontextprotocol/sdk` 1.x to
