@@ -30,8 +30,8 @@ export const MODULES = [
     actions: ['link_create', 'link_list', 'link_resolve'],
   },
   {
-    id: 'documents', version: '1.0.0', optional: true,
-    actions: ['document_ingest', 'document_search', 'document_list'],
+    id: 'documents', version: '1.1.0', optional: true,
+    actions: ['document_ingest', 'document_search', 'document_list', 'document_retire'],
   },
   {
     id: 'maintenance', version: '1.0.0', optional: true,
@@ -96,4 +96,12 @@ export function boundContext<T extends object>(rows: T[], maxChars: number) {
     used += size;
   }
   return { rows: bounded, usedChars: used, truncated: bounded.length < rows.length };
+}
+
+export function contextCharacterBudget(input: { max_chars?: unknown; max_characters?: unknown }) {
+  const value = input.max_chars ?? input.max_characters ?? 20_000;
+  if (!Number.isInteger(value) || Number(value) < 1_000 || Number(value) > 100_000) {
+    throw new RangeError('invalid_context_budget');
+  }
+  return Number(value);
 }

@@ -28,6 +28,7 @@ const tools = [
   })),
   tool('memory_context', 'Build a deterministic, budgeted context bundle across authorized namespaces.', objectSchema(['query'], {
     query: stringSchema(), namespaces: arraySchema(stringSchema()), max_chars: numberSchema(),
+    max_characters: numberSchema(),
     per_namespace_limit: numberSchema(), include_events: booleanSchema(),
   })),
   tool('memory_event_append', 'Append a durable agent/tool activity event without chain-of-thought.', objectSchema(['event_type', 'summary'], {
@@ -59,6 +60,12 @@ const tools = [
   })),
   tool('memory_document_search', 'Search document chunks with hybrid retrieval.', objectSchema(['query'], {
     namespace: stringSchema(), query: stringSchema(), limit: numberSchema(), pool: numberSchema(),
+  })),
+  tool('memory_document_list', 'Page through documents in the optional document/chunk module.', objectSchema([], {
+    namespace: stringSchema(), limit: numberSchema(), offset: numberSchema(), include_retired: booleanSchema(),
+  })),
+  tool('memory_document_retire', 'Retire a document so its chunks no longer participate in search.', objectSchema(['id'], {
+    id: stringSchema(), reason: stringSchema(),
   })),
   tool('memory_maintenance_status', 'Show namespace capacity and module health without returning content.', objectSchema([], {
     namespace: stringSchema(),

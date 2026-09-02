@@ -57,7 +57,8 @@ Links an old row to an active replacement in the same namespace.
 - `memory_event_append`, `memory_event_list`
 - `memory_source_upsert`, `memory_source_link`
 - `memory_link_create`, `memory_link_list`, `memory_link_resolve`
-- `memory_document_ingest`, `memory_document_search`
+- `memory_document_ingest`, `memory_document_search`, `memory_document_list`,
+  `memory_document_retire`
 - `memory_maintenance_status`
 
 These tools call the same versioned API as HTTPS and TypeScript. `memory_health`

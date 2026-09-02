@@ -101,6 +101,7 @@ Fusion; the caller synthesizes.
 | `namespaces` | string[] | 1..8 explicit namespaces; falls back to `namespace`, then `["default"]` |
 | `per_namespace_limit` | int | 1..20, default 8 |
 | `max_chars` | int | 1000..100000, default 20000 |
+| `max_characters` | int | deprecated compatibility alias for `max_chars` |
 | `include_events` | boolean | default false; adds up to 5 recent events per namespace |
 
 Returns a deterministic budgeted bundle: `memories` (merged by `final_score`),
@@ -246,8 +247,17 @@ returns the existing document with `created:false`.
 
 ### `document_list` — `memory:read`
 
-`namespace`, `limit` (1..500, default 100). Returns active `documents`
-(metadata and content hash, not chunk vectors).
+`namespace`, `limit` (1..500, default 100), `offset` (0..1000000, default 0),
+and `include_retired` (default false). Returns `documents` (metadata and content
+hash, not chunk vectors) plus `next_offset`; pass that value as `offset` until it
+is `null`.
+
+### `document_retire` — `memory:write` on the document's namespace
+
+`id` (uuid, required), `reason` (optional, ≤2048). Deactivates the document so
+its chunks no longer participate in `document_search`. The operation is
+idempotent and returns `{id, retired}`; `retired` is true only when this call
+changed an active document.
 
 ## Maintenance Module (optional)
 

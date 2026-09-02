@@ -3,6 +3,16 @@
 Notable changes are documented here. Versions follow semantic versioning after the
 first public release.
 
+## Unreleased
+
+### Fixed
+
+- accept the early `max_characters` context-budget spelling as a compatibility
+  alias for canonical `max_chars`, while rejecting out-of-range budgets instead
+  of silently ignoring them
+- add paginated document inventory and soft document retirement to prevent stale
+  document versions from competing in hybrid search
+
 ## 1.3.0 - 2026-08-19
 
 ### Added

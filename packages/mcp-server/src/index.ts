@@ -90,6 +90,8 @@ function buildServer() {
         query: z.string().min(1).max(20_000),
         namespaces: z.array(z.string()).min(1).max(8).optional(),
         max_chars: z.number().int().min(1000).max(100_000).optional(),
+        max_characters: z.number().int().min(1000).max(100_000).optional()
+          .describe('Deprecated alias for max_chars.'),
         per_namespace_limit: z.number().int().min(1).max(20).optional(),
         include_events: z.boolean().optional(),
       }),
@@ -201,6 +203,27 @@ function buildServer() {
       }),
     },
     async (args) => asText(await client.searchDocuments(args)),
+  );
+
+  server.registerTool(
+    'memory_document_list',
+    {
+      description: 'Page through documents in the optional document/chunk module.',
+      inputSchema: z.object({
+        namespace: z.string().optional(), limit: z.number().int().min(1).max(500).optional(),
+        offset: z.number().int().min(0).max(1_000_000).optional(), include_retired: z.boolean().optional(),
+      }),
+    },
+    async (args) => asText(await client.listDocuments(args)),
+  );
+
+  server.registerTool(
+    'memory_document_retire',
+    {
+      description: 'Retire a document so its chunks no longer participate in search.',
+      inputSchema: z.object({ id: z.string().uuid(), reason: z.string().max(2048).optional() }),
+    },
+    async (args) => asText(await client.retireDocument(args.id, args.reason)),
   );
 
   server.registerTool(

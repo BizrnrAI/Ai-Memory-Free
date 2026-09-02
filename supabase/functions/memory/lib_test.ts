@@ -8,7 +8,7 @@ import {
   sha256Hex,
   timingSafeEqualHex,
 } from './lib.ts';
-import { boundContext, isPortableResource, splitDocumentText } from './protocol.ts';
+import { boundContext, contextCharacterBudget, isPortableResource, splitDocumentText } from './protocol.ts';
 
 Deno.test('scoped permissions and namespaces fail closed', () => {
   assert(hasPermission(['memory:admin'], 'memory:read'));
@@ -131,6 +131,13 @@ Deno.test('context budgets preserve the best first result and report truncation'
   assertEquals(oversized.usedChars, 12);
 });
 
+Deno.test('context budgets accept the documented field and the legacy long-form alias', () => {
+  assertEquals(contextCharacterBudget({ max_chars: 2_500 }), 2_500);
+  assertEquals(contextCharacterBudget({ max_characters: 2_500 }), 2_500);
+  assertEquals(contextCharacterBudget({ max_chars: 3_000, max_characters: 2_500 }), 3_000);
+  assertThrows(() => contextCharacterBudget({ max_characters: 500 }), 'invalid_context_budget');
+});
+
 Deno.test('portable resources are an explicit allowlist', () => {
   assert(isPortableResource('memories'));
   assert(isPortableResource('source_links'));
@@ -150,4 +157,14 @@ function assertApprox(actual: number, expected: number) {
   if (Math.abs(actual - expected) > 1e-10) {
     throw new Error(`expected approximately ${expected}, received ${actual}`);
   }
+}
+
+function assertThrows(operation: () => unknown, expected: string) {
+  try {
+    operation();
+  } catch (error) {
+    if (error instanceof Error && error.message === expected) return;
+    throw error;
+  }
+  throw new Error(`expected ${expected} to be thrown`);
 }

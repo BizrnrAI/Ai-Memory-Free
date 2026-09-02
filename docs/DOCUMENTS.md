@@ -19,3 +19,9 @@ ingestion.
 `document_search` uses its own hybrid chunk RPC. Document results never replace or
 silently enter core memory; an agent may store a durable conclusion separately and
 link it to a registered source.
+
+Corrected documents should be ingested first and then replace their predecessor
+operationally with `document_retire`. Retirement is soft: the document remains
+portable and auditable, while its chunks immediately stop participating in search.
+Use `document_list` with `limit` and `offset` until `next_offset` is `null` to
+reconcile the full active corpus without direct database credentials.

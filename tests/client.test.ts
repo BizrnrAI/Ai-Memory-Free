@@ -63,6 +63,21 @@ test('client exposes modular v1.2 actions through typed helpers and generic call
   assert(requests.every((request) => request.protocol_version === '1'));
 });
 
+test('client exposes document lifecycle and paginated listing helpers', async () => {
+  const requests: Record<string, unknown>[] = [];
+  const fetchImpl: typeof fetch = async (_input, init) => {
+    requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+    return new Response(JSON.stringify({ ok: true }));
+  };
+  const client = new MemoryClient({ apiUrl: 'https://memory.example.test', token: 'client-token', fetchImpl });
+
+  await client.listDocuments({ namespace: 'platform', limit: 50, offset: 100 });
+  await client.retireDocument('00000000-0000-4000-8000-000000000001', 'superseded');
+
+  assert.deepEqual(requests.map((request) => request.action), ['document_list', 'document_retire']);
+  assert.equal(requests[0].offset, 100);
+});
+
 test('client converts non-JSON failures into a bounded error', async () => {
   const fetchImpl: typeof fetch = async () => new Response('proxy exploded', { status: 502 });
   const client = new MemoryClient({ apiUrl: 'https://memory.example.test', token: 'client-token', fetchImpl });
