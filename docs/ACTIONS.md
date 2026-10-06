@@ -221,7 +221,11 @@ Secret values never enter semantic memory, embeddings, search, or audit logs.
 `namespace` (optional), `name` (identifier, ≤128, `[a-zA-Z0-9_.:-]`),
 `secret` (string, 1..16384, exempt from credential scanning), `description`
 (optional, ≤2048), `metadata` (optional object). Returns stored secret
-metadata; storing an existing name creates a new version.
+metadata; storing an existing name creates a new version. When metadata supplies
+`service`, `environment`, and `credential_type`, each must use lowercase identifier
+components (1..40 characters, letters/digits/underscores/hyphens) and `name` must
+equal `service.environment.credential_type`. The client provides `formatSecretName`,
+`storeCredential`, and `getCredential`; legacy names remain supported.
 
 ### `secret_get` — `secrets:read`
 
@@ -230,8 +234,15 @@ metadata. 404 if absent. Decryption is audited.
 
 ### `secret_list` — `secrets:list` (plus `secrets:admin` for `include_retired`)
 
-`namespace` (optional), `include_retired` (boolean). Returns metadata only —
-never plaintext or ciphertext.
+`namespace` (optional), `include_retired` (boolean), `limit` (1..500, default
+500), `cursor` (the previous `next_cursor`), and `name_prefix` (literal logical-name
+prefix), and `query` (1..256 characters, web-search words from indexed names,
+descriptions, service, environment and credential type). Values are not indexed.
+Returns `{secrets, next_cursor}` with metadata only — never plaintext or
+ciphertext. Follow `next_cursor` until null to enumerate the complete inventory.
+The client provides `listAllSecrets` and `getSecrets` for 1..10 explicitly selected
+names; selected retrieval uses ordinary `secret_get` calls and their individual
+permission, rate-limit, and audit boundaries.
 
 ### `secret_retire` — `secrets:admin`
 

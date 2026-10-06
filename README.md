@@ -65,6 +65,7 @@ share the same memory.
 | Move data between installations | [Portable export/import](docs/PORTABILITY.md) |
 | Call from TypeScript or HTTPS | [Integration choices](docs/AI_AGENT_INSTALL.md#integration-choices) |
 | Call the API from any language | [HTTPS action reference](docs/ACTIONS.md) |
+| Store and retrieve encrypted API keys/tokens | [Credential access](docs/SECRETS.md) |
 | Understand security and Vault | [Security model](docs/SECURITY.md) |
 | Browse all documentation | [Documentation index](docs/INDEX.md) |
 

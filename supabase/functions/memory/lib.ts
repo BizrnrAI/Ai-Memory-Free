@@ -285,3 +285,13 @@ export function containsLikelySecret(value: string) {
 function bytesToHex(bytes: Uint8Array) {
   return [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
+
+/** Canonical credential identity, when all three identity fields are supplied. */
+export function canonicalSecretName(identity: { service?: unknown; environment?: unknown; credential_type?: unknown }) {
+  const values = [identity.service, identity.environment, identity.credential_type];
+  if (values.some((value) => value === undefined)) return null; // legacy metadata remains compatible
+  if (values.some((value) => typeof value !== 'string' || !/^[a-z0-9][a-z0-9_-]{0,39}$/.test(value))) {
+    throw new Error('invalid_secret_identity');
+  }
+  return values.join('.');
+}

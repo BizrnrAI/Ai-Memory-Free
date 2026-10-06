@@ -10,6 +10,7 @@ export type RemoteMcpOptions = {
   authorizationServer?: string;
   resourceUrl?: string;
   fetchImpl?: typeof fetch;
+  allowInsecureHttp?: boolean;
 };
 
 const validator = new CfWorkerJsonSchemaValidator();
@@ -37,16 +38,21 @@ export function createRemoteMcpHandler(options: RemoteMcpOptions) {
     if (!authorization?.startsWith('Bearer ') || !authorization.slice(7).trim()) return unauthorized(metadataUrl);
     let upstreamCalls = 0;
     const upstreamFetch = options.fetchImpl ?? fetch;
-    const client = new MemoryClient({
-      apiUrl: options.memoryApiUrl, token: authorization.slice(7).trim(),
-      fetchImpl: async (url, init) => {
-        // Hosted Supabase allows 30 nested invocations per trace. Count actual
-        // attempts, including retries and health, and leave room for the MCP call.
-        if (upstreamCalls >= 28) return Response.json({ error: 'remote_request_budget_exceeded' }, { status: 429 });
-        upstreamCalls += 1;
-        return await upstreamFetch(url, init);
-      },
-    });
+    let client: MemoryClient;
+    try {
+      client = new MemoryClient({
+        apiUrl: options.memoryApiUrl, token: authorization.slice(7).trim(), allowInsecureHttp: options.allowInsecureHttp,
+        fetchImpl: async (url, init) => {
+          // Hosted Supabase allows 30 nested invocations per trace. Count actual
+          // attempts, including retries and health, and leave room for the MCP call.
+          if (upstreamCalls >= 28) return Response.json({ error: 'remote_request_budget_exceeded' }, { status: 429 });
+          upstreamCalls += 1;
+          return await upstreamFetch(url, init);
+        },
+      });
+    } catch {
+      return response({ error: 'mcp_server_not_configured' }, 503);
+    }
     try {
       const identity = await client.health();
       if (!isOAuthIdentity(identity)) return unauthorized(metadataUrl);

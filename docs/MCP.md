@@ -77,6 +77,7 @@ Set `MCP_ENABLE_SECRET_TOOLS=true` to register:
 
 - `memory_secret_store`
 - `memory_secret_get`
+- `memory_secret_get_many` — 1..10 explicitly selected logical names
 - `memory_secret_list`
 - `memory_secret_retire`
 
@@ -158,3 +159,6 @@ References:
 - [MCP authorization](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization)
 - [MCP transports](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports)
 - [Optional Supabase OAuth remote MCP](REMOTE_MCP.md)
+
+Secret inventory supports `limit`, `cursor`, and literal `name_prefix`; follow
+`next_cursor` until null. See [SECRETS.md](SECRETS.md) for scoped credential access.

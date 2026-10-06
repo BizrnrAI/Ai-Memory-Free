@@ -11,6 +11,10 @@ untouched; nothing needs re-embedding.
    supabase migration up --linked
    ```
 
+   The additive `vault_secret_access_hardening` migration also updates the Vault
+   wrappers for safe creation/rotation and coherent reads, preserving stored
+   values and Vault UUIDs. Apply it before deploying the function.
+
    `0013` recreates `recall` and replaces `recall_document_chunks`. It is safe to
    apply more than once. If your deployment added its own migrations numbered
    `0009`–`0012`, keep them: those numbers are intentionally unused upstream.
@@ -56,6 +60,13 @@ untouched; nothing needs re-embedding.
   document ingests can return `chunks_pending`; repeat the same call to resume.
 - **Recall returns different, better-ranked results** for questions, and each row
   carries `source_system` and `external_id`.
+
+## Credential Access
+
+See [SECRETS.md](SECRETS.md): paginated metadata discovery, explicit selected-name
+retrieval, and credential rotation. Client URLs now require HTTPS except loopback;
+private HTTP installations must explicitly opt in (`allowInsecureHttp` or
+`MEMORY_ALLOW_INSECURE_HTTP=true` for MCP). Clients refuse redirects.
 
 ## Optional Settings
 

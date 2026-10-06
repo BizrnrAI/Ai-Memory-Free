@@ -237,3 +237,22 @@ Reasoning: both used to succeed while doing something other than what was asked 
 keeping the old content, or storing a `note`. A memory system that silently
 discards a correction is worse than one that refuses it. Corrections are written
 as a new memory and linked with `supersede`.
+
+## 2026-10-06 - Named Credential Access Keeps Vault And Hashed Authentication
+
+Decision: retain Supabase Vault for recoverable credentials and SHA-256 for
+high-entropy caller tokens. Add paginated metadata discovery and bounded retrieval
+of explicitly named secrets, without placing values in semantic search.
+
+Reasoning: the primitives already fit their distinct purposes. Access needed
+repair: missing descriptions failed Vault writes; colon-concatenated identifiers
+could collide; rotation could mix a value with stale version metadata; inventory
+stopped at 500 entries. An additive wrapper migration and client/adapter helpers
+fix these boundaries without custom cryptography or weakening namespace grants.
+HTTPS and redirect rejection protect values and bearer tokens in transit.
+
+Secret discovery indexes registry names, descriptions and explicit service,
+environment and credential-type metadata, including legacy entries, without
+indexing Vault values. New credential helpers enforce consistent
+`service.environment.credential_type` identities; complete identities submitted
+through the raw API must match their names. Legacy identifiers remain usable.

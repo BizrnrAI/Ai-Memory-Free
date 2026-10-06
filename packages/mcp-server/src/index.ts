@@ -4,7 +4,7 @@ import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
 import { MemoryClient } from '@ai-memory-free/client';
 
-const client = new MemoryClient();
+const client = new MemoryClient({ allowInsecureHttp: process.env.MEMORY_ALLOW_INSECURE_HTTP === 'true' });
 
 function buildServer() {
   const server = new McpServer({
@@ -289,7 +289,7 @@ function buildServer() {
     server.registerTool(
       'memory_secret_store',
       {
-        description: 'Encrypt and store a recoverable secret in Supabase Vault. Requires secrets:write.',
+        description: 'Encrypt and store a recoverable secret in Supabase Vault. Use service.environment.credential_type with matching service, environment, credential_type metadata for discoverability. Requires secrets:write.',
         inputSchema: z.object({
           namespace: z.string().optional(),
           name: z.string().regex(/^[a-zA-Z0-9_.:-]{1,128}$/),
@@ -316,13 +316,26 @@ function buildServer() {
     server.registerTool(
       'memory_secret_list',
       {
-        description: 'List encrypted-secret metadata only. Secret values and Vault ciphertext are never returned.',
+        description: 'Find credentials by indexed safe metadata (query), literal name_prefix, and cursor. Returns names and metadata without values; use an exact name with memory_secret_get.',
         inputSchema: z.object({
           namespace: z.string().optional(),
           include_retired: z.boolean().optional(),
+          limit: z.number().int().min(1).max(500).optional(),
+          cursor: z.string().optional(),
+          name_prefix: z.string().optional(),
+          query: z.string().min(1).max(256).optional(),
         }),
       },
-      async (args) => asText(await client.listSecrets(args.namespace, args.include_retired)),
+      async (args) => asText(await client.listSecrets(args)),
+    );
+
+    server.registerTool(
+      'memory_secret_get_many',
+      {
+        description: 'Decrypt 1 to 10 explicitly named credentials. Requires secrets:read; returns values to this trusted client.',
+        inputSchema: z.object({ namespace: z.string().optional(), names: z.array(z.string().regex(/^[a-zA-Z0-9_.:-]{1,128}$/)).min(1).max(10) }),
+      },
+      async (args) => asText(await client.getSecrets(args)),
     );
 
     server.registerTool(

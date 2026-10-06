@@ -1,4 +1,5 @@
 import {
+  canonicalSecretName,
   averageNormalizedEmbeddings,
   bearerToken,
   chunkEmbeddingText,
@@ -254,4 +255,15 @@ Deno.test('list pages never discard the tail of an oversized memory', () => {
   const second = boundList(rows.slice(first.rows.length), 1600);
   assertEquals(second.rows[0].content.length, 700);
   assertEquals(second.truncated, false);
+});
+
+
+Deno.test('credential naming validates complete identities while preserving legacy metadata', () => {
+  assertEquals(canonicalSecretName({ service: 'github', environment: 'production', credential_type: 'api_token' }), 'github.production.api_token');
+  assertEquals(canonicalSecretName({ service: 'github' }), null);
+  for (const service of ['GitHub', '', 'github.com', 'a'.repeat(41)]) {
+    let rejected = false;
+    try { canonicalSecretName({ service, environment: 'production', credential_type: 'api_token' }); } catch { rejected = true; }
+    assert(rejected);
+  }
 });

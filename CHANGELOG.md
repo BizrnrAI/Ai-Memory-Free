@@ -105,6 +105,24 @@ that relied on the old duplicate handling.
 - release version strings are checked against `protocol.ts`, so a bump cannot
   leave one behind
 
+### Credential Security And Access
+
+- Preserve Vault authenticated encryption and hash-only caller authentication.
+  Add the `vault_secret_access_hardening` migration: secrets work without a
+  description, namespace/name pairs cannot collide, and concurrent writes/reads
+  serialize so values and versions remain coherent. Existing values are preserved.
+- Secret inventory indexes all names and safe descriptive metadata for full-text
+  search, with name-cursor pagination and literal name prefixes. Canonical
+  `service.environment.credential_type` helpers and server validation prevent
+  inconsistent identities without breaking legacy names.
+  `listAllSecrets` discovers complete metadata; `getSecrets` and optional stdio
+  `memory_secret_get_many` retrieve 1..10 explicitly selected names.
+- HTTPS is the client default, with HTTP loopback and explicit private-network
+  opt-in. Requests reject redirects and use `cache:no-store`.
+- CI exercises encrypted storage, scoped permissions, full discovery, literal
+  prefixes, concurrent rotation, retirement, expiry/revocation, and isolation from
+  semantic recall and portable export.
+
 ### Review Hardening
 
 - Remote OAuth MCP now uses the official SDK for both the 2026-07-28 stateless

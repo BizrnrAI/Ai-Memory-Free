@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { MemoryClient, MemoryRequestError, packByEmbedBudget } from '../packages/client/src/index.js';
+import { MemoryClient, MemoryRequestError, packByEmbedBudget, formatSecretName } from '../packages/client/src/index.js';
 
 test('client sends bearer auth without exposing it in the request body', async () => {
   let seen: RequestInit | undefined;
@@ -203,4 +203,55 @@ test('unknown actions are never retried and generic input cannot override the se
   const client = new MemoryClient({ apiUrl: 'https://memory.example.test', token: 't', fetchImpl });
   await assert.rejects(client.call('custom_write', { action: 'health' }));
   assert.deepEqual(actions, ['custom_write']);
+});
+
+test('secret discovery follows name cursors and selected retrieval decrypts only named entries', async () => {
+  const bodies: Record<string, unknown>[] = [];
+  const fetchImpl: typeof fetch = async (_url, init) => {
+    const body = JSON.parse(String(init?.body)); bodies.push(body);
+    assert.equal(init?.redirect, 'error');
+    assert.equal(init?.cache, 'no-store');
+    if (body.action === 'secret_list') return Response.json({ secrets: [{ name: body.cursor ? 'github.token' : 'github.api_key' }], next_cursor: body.cursor ? null : 'github.api_key' });
+    return Response.json({ secret: { name: body.name, secret: 'test-value' } });
+  };
+  const client = new MemoryClient({ apiUrl: 'https://memory.example.test', token: 't', fetchImpl });
+  const list = await client.listAllSecrets({ namespace: 'p', name_prefix: 'github.', limit: 1 });
+  assert.deepEqual(list.map((entry) => entry.name), ['github.api_key', 'github.token']);
+  const selected = await client.getSecrets({ namespace: 'p', names: ['github.token', 'github.token'] });
+  assert.deepEqual(selected.secrets.map((entry) => entry.name), ['github.token']);
+  assert.deepEqual(bodies.filter((body) => body.action === 'secret_get').map((body) => body.name), ['github.token']);
+  await assert.rejects(client.getSecrets({ names: [] }));
+  await client.listSecrets('p', true); // prior signature remains supported
+  assert.equal(bodies.at(-1)?.include_retired, true);
+});
+
+test('clients protect credentials with HTTPS and disallow URL credentials and fragments', () => {
+  for (const apiUrl of ['http://memory.example.test', 'ftp://memory.example.test', 'https://user:password@memory.example.test', 'https://memory.example.test/#fragment']) {
+    assert.throws(() => new MemoryClient({ apiUrl, token: 't' }));
+  }
+  for (const apiUrl of ['http://127.0.0.1:54321', 'http://localhost:54321', 'http://[::1]:54321', 'https://memory.example.test']) {
+    assert.doesNotThrow(() => new MemoryClient({ apiUrl, token: 't' }));
+  }
+  assert.doesNotThrow(() => new MemoryClient({ apiUrl: 'http://private-service', token: 't', allowInsecureHttp: true }));
+});
+
+
+test('credential identity gives storage and retrieval the same validated canonical name', async () => {
+  const identity = { service: 'github', environment: 'production', credential_type: 'api_token' };
+  assert.equal(formatSecretName(identity), 'github.production.api_token');
+  for (const service of ['GitHub', '', 'github.com', 'a'.repeat(41)]) {
+    assert.throws(() => formatSecretName({ ...identity, service }));
+  }
+  const requests: Record<string, unknown>[] = [];
+  const client = new MemoryClient({ apiUrl: 'https://memory.example.test', token: 'test', fetchImpl: async (_url, init) => {
+    requests.push(JSON.parse(String(init?.body)));
+    return Response.json({ ok: true, secrets: [], next_cursor: null });
+  } });
+  await client.storeCredential({ ...identity, namespace: 'platform', secret: 'test-value', metadata: { service: 'wrong', owner: 'operations' } });
+  await client.getCredential({ ...identity, namespace: 'platform' });
+  await client.listAllSecrets({ namespace: 'platform', query: 'github production api token' });
+  assert.equal(requests[0].name, 'github.production.api_token');
+  assert.deepEqual(requests[0].metadata, { ...identity, owner: 'operations' });
+  assert.equal(requests[1].name, requests[0].name);
+  assert.equal(requests[2].query, 'github production api token');
 });

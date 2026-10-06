@@ -30,6 +30,7 @@ Choose the shortest path that matches your goal.
 
 ## Trust And Maintenance
 
+- [Encrypted API keys and tokens](SECRETS.md)
 - [Security model](SECURITY.md)
 - [Full repository audit](AUDIT.md)
 - [Design decisions](DECISIONS.md)

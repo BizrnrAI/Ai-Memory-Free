@@ -14,7 +14,7 @@ export const MODULES = [
     actions: CORE_ACTIONS,
   },
   {
-    id: 'vault-secrets', version: '1.0.0', optional: true,
+    id: 'vault-secrets', version: '1.1.0', optional: true,
     actions: ['secret_store', 'secret_get', 'secret_list', 'secret_retire'],
   },
   {

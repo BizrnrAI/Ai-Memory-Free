@@ -111,6 +111,33 @@ export type SecretGetInput = {
   name: string;
 };
 
+/** Metadata-only discovery: no secret values are decrypted. */
+export type CredentialIdentity = {
+  service: string;
+  environment: string;
+  credential_type: string;
+};
+
+/** Stable lowercase service.environment.credential_type identity, max 122 characters. */
+export function formatSecretName(identity: CredentialIdentity) {
+  const parts = [identity.service, identity.environment, identity.credential_type];
+  if (parts.some((part) => typeof part !== 'string' || !/^[a-z0-9][a-z0-9_-]{0,39}$/.test(part))) {
+    throw new Error('credential identity components must be 1..40 lowercase letters, digits, underscores or hyphens');
+  }
+  return parts.join('.');
+}
+
+export type SecretListInput = {
+  namespace?: string;
+  include_retired?: boolean;
+  limit?: number;
+  cursor?: string;
+  /** Literal prefix of a logical name, e.g. github. or stripe_. */
+  name_prefix?: string;
+  /** Indexed keyword search of safe names, descriptions, service, environment and credential type. */
+  query?: string;
+};
+
 export type EncryptedSecretMetadata = {
   id: string;
   namespace: string;
@@ -154,6 +181,8 @@ export type MemoryClientOptions = {
   token?: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+  /** Explicit opt-in for a private HTTP deployment; HTTPS is required otherwise, except local loopback. */
+  allowInsecureHttp?: boolean;
   /**
    * Extra attempts after an HTTP 546, 502 or 503. Hosted Supabase answers 546
    * when the worker serving the request ran out of CPU, and 502/503 while a
@@ -198,7 +227,7 @@ export class MemoryClient {
   private limits: ServiceLimits | null | undefined;
 
   constructor(options: MemoryClientOptions = {}) {
-    this.apiUrl = required(options.apiUrl ?? process.env.MEMORY_API_URL, 'MEMORY_API_URL');
+    this.apiUrl = secureApiUrl(required(options.apiUrl ?? process.env.MEMORY_API_URL, 'MEMORY_API_URL'), options.allowInsecureHttp === true);
     this.token = required(options.token ?? process.env.MEMORY_TOKEN, 'MEMORY_TOKEN');
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.timeoutMs = options.timeoutMs ?? 30_000;
@@ -443,26 +472,66 @@ export class MemoryClient {
     });
   }
 
+  /** Create/rotate a consistently named credential and its searchable identity metadata. */
+  async storeCredential(input: CredentialIdentity & { namespace?: string; secret: string; description?: string; metadata?: Record<string, unknown> }) {
+    const { service, environment, credential_type, ...rest } = input;
+    const identity = { service, environment, credential_type };
+    return await this.storeSecret({ ...rest, name: formatSecretName(identity), metadata: { ...rest.metadata, ...identity } });
+  }
+
+  async getCredential(input: CredentialIdentity & { namespace?: string }) {
+    return await this.getSecret({ namespace: input.namespace, name: formatSecretName(input) });
+  }
+
   async storeSecret(input: SecretStoreInput) {
     return await this.request<{ ok: boolean; secret: EncryptedSecretMetadata }>({
-      action: 'secret_store',
       ...input,
+      action: 'secret_store',
     });
   }
 
   async getSecret(input: SecretGetInput) {
     return await this.request<{ ok: boolean; secret: DecryptedSecret }>({
-      action: 'secret_get',
       ...input,
+      action: 'secret_get',
     });
   }
 
-  async listSecrets(namespace?: string, includeRetired = false) {
-    return await this.request<{ ok: boolean; secrets: EncryptedSecretMetadata[] }>({
-      action: 'secret_list',
-      namespace,
-      include_retired: includeRetired,
-    });
+  async listSecrets(input?: SecretListInput | string, includeRetired = false) {
+    const options = typeof input === 'string' || input === undefined
+      ? { namespace: input, include_retired: includeRetired } : input;
+    return await this.call<{ ok: boolean; secrets: EncryptedSecretMetadata[]; next_cursor?: string | null }>(
+      'secret_list', options,
+    );
+  }
+
+  /** Discover every matching logical name without decrypting any values. */
+  async listAllSecrets(input: Omit<SecretListInput, 'cursor'> = {}) {
+    const secrets: EncryptedSecretMetadata[] = [];
+    const seen = new Set<string>();
+    let cursor: string | undefined;
+    do {
+      const page = await this.listSecrets({ ...input, cursor });
+      secrets.push(...page.secrets);
+      const next = page.next_cursor ?? undefined;
+      if (next && seen.has(next)) throw new Error('secret list did not advance');
+      if (next) seen.add(next);
+      cursor = next;
+    } while (cursor);
+    return secrets;
+  }
+
+  /** Decrypt only explicitly selected names (1..10), using the same scoped get API. */
+  async getSecrets(input: { namespace?: string; names: string[] }) {
+    if (input.names.length < 1 || input.names.length > 10 ||
+        input.names.some((name) => !/^[a-zA-Z0-9_.:-]{1,128}$/.test(name))) {
+      throw new Error('secret names must contain 1 to 10 valid logical names');
+    }
+    const secrets: DecryptedSecret[] = [];
+    for (const name of new Set(input.names)) {
+      secrets.push((await this.getSecret({ namespace: input.namespace, name })).secret);
+    }
+    return { ok: true, secrets };
   }
 
   async retireSecret(name: string, namespace?: string) {
@@ -497,6 +566,8 @@ export class MemoryClient {
     try {
       const response = await this.fetchImpl(this.apiUrl, {
         method: 'POST',
+        redirect: 'error',
+        cache: 'no-store',
         headers: {
           authorization: `Bearer ${this.token}`,
           'content-type': 'application/json',
@@ -572,4 +643,15 @@ function required(value: string | undefined, name: string) {
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function secureApiUrl(value: string, allowInsecureHttp: boolean) {
+  let url: URL;
+  try { url = new URL(value); } catch { throw new Error('MEMORY_API_URL must be a valid URL'); }
+  if (url.username || url.password || url.hash) throw new Error('MEMORY_API_URL must not contain credentials or a fragment');
+  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && (loopback || allowInsecureHttp))) {
+    throw new Error('MEMORY_API_URL requires HTTPS (HTTP is allowed for loopback or an explicit private-network opt-in)');
+  }
+  return url.toString();
 }

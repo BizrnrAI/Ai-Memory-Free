@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import {
   bearerToken,
+  canonicalSecretName,
   chunksPerText,
   containsLikelySecret,
   contentByteLimit,
@@ -110,6 +111,8 @@ type RequestBody = {
   kinds?: string[];
   order?: string;
   replace_same_title?: boolean;
+  cursor?: string;
+  name_prefix?: string;
 };
 
 type Caller = {
@@ -1319,6 +1322,13 @@ async function handleSecretStore(context: RequestContext, input: RequestBody) {
   const description = trimOptional(input.description, 2048) ?? '';
   const metadata = isPlainObject(input.metadata) ? input.metadata : {};
   assertNoSecretMaterial({ description, metadata });
+  try {
+    const canonical = canonicalSecretName(metadata);
+    if (canonical !== null && name !== canonical) throw new ApiError('secret_name_identity_mismatch', 400, { expected_name: canonical });
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new ApiError('invalid_secret_identity', 400);
+  }
 
   const { data, error } = await db.rpc('store_encrypted_secret', {
     p_namespace: namespace,
@@ -1357,18 +1367,29 @@ async function handleSecretList(context: RequestContext, input: RequestBody) {
   requireAccess(context.caller, 'secrets:list', namespace);
   if (input.include_retired) requireAccess(context.caller, 'secrets:admin', namespace);
 
+  const limit = Math.trunc(clampNumber(input.limit ?? 500, 1, 500));
+  const cursor = input.cursor === undefined ? null : cleanIdentifier(input.cursor, 'cursor');
+  const prefix = input.name_prefix === undefined ? null : cleanIdentifier(input.name_prefix, 'name_prefix');
   let query = db.from('memory_secrets')
     .select('id, namespace, name, description, version, metadata, is_active, access_count, last_accessed_at, created_at, updated_at, retired_at')
     .eq('namespace', namespace)
     .order('name')
-    .order('version', { ascending: false })
-    .limit(500);
+    .limit(limit + 1);
+  if (cursor) query = query.gt('name', cursor);
+  if (prefix) query = query.like('name', `${prefix.replaceAll('_', '\\_')}%`);
+  if (input.query !== undefined) {
+    const search = requiredString(input.query, 'query', 1, 256);
+    assertNoSecretMaterial({ query: search });
+    query = query.textSearch('discovery_fts', search, { config: 'simple', type: 'websearch' });
+  }
   if (!input.include_retired) query = query.eq('is_active', true);
   const { data, error } = await query;
   if (error) throw new ApiError('secret_list_failed', 500);
 
-  await audit(context, 'secret_list', namespace, undefined, true, { result_count: data?.length ?? 0 });
-  return json({ ok: true, secrets: data ?? [] }, 200, context.request);
+  const rows = data ?? [];
+  const page = rows.slice(0, limit);
+  await audit(context, 'secret_list', namespace, undefined, true, { result_count: page.length });
+  return json({ ok: true, secrets: page, next_cursor: rows.length > limit ? page.at(-1)!.name : null }, 200, context.request);
 }
 
 async function handleSecretRetire(context: RequestContext, input: RequestBody) {
