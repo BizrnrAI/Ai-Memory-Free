@@ -179,3 +179,54 @@ absent.
 Reasoning: hosted MCP adoption matters, but a shared bearer token is not a secure
 authorization design. Supabase provides the authorization server inside the same
 platform; the MCP function remains only a protected protocol adapter.
+
+## 2026-10-06 - One Request Embeds What The Hosted Runtime Can Always Afford
+
+Decision: the service budgets the characters one request may hand to `gte-small`
+(`MEMORY_EMBED_CHARS_PER_REQUEST`, default 3,600 — two 1,800-character chunks).
+A single text is sampled down to fit; a batch that cannot fit is refused before
+anything is written; documents embed in resumable steps.
+
+Reasoning: this supersedes the eight-chunk average of 2026-07-09. Hosted Supabase
+kills a worker that uses about 2 seconds of CPU and answers HTTP 546. Measured
+against a hosted project, back to back: one and two chunks never failed (0 of 24),
+three failed 1 of 14, four and five 2 of 14, seven always. A worker serves
+several requests and retires at a lower soft limit, so a request can arrive with
+only part of the 2 seconds left; only a request small enough for the remainder is
+always safe. The eight-chunk design could not store any memory above roughly
+10,000 characters on the platform the project targets.
+
+## 2026-10-06 - Recall Fuses Three Lists, And Embeddings Are Optional
+
+Decision: recall fuses nearest vectors, all-words full-text matches, and any-word
+full-text matches. `MEMORY_EMBEDDINGS=off` runs the service on full-text alone.
+
+Reasoning: measured on 227 real memories and 36 queries with known answers
+([RETRIEVAL.md](RETRIEVAL.md)). Embeddings alone were the weakest method (first
+result correct for 14). The all-words list is precise for identifiers and found
+nothing for 17 of 20 plain-language questions, so for questions the old hybrid
+was embeddings alone. Three lists gave 28 correct first results and 35 in the top
+five; keyword-only gave 24 and 30. Embeddings earn their place — they add the
+matches that share no words with the query — but they are the costly, fragile
+part, so an operator may turn them off and keep most of the recall.
+
+## 2026-10-06 - A Namespace That Fits In Context Is Read Whole
+
+Decision: add `list`, a deterministic, paginated, budgeted read of a namespace.
+
+Reasoning: every ranked retrieval can miss. A project namespace is usually tens
+of memories — far below a model's context — and an agent starting work needs all
+of the standing decisions and procedures, not the eight most similar to a prompt.
+Similarity-ranked startup bundles were observed truncating at their budget and
+leaving standing decisions out.
+
+## 2026-10-06 - A Reused Idempotency Key With New Content Is A Conflict
+
+Decision: `remember` with an existing `source_system` + `external_id` and
+different content returns `409 external_id_content_conflict`. An unknown `kind`
+returns `400 invalid_kind`.
+
+Reasoning: both used to succeed while doing something other than what was asked —
+keeping the old content, or storing a `note`. A memory system that silently
+discards a correction is worse than one that refuses it. Corrections are written
+as a new memory and linked with `supersede`.

@@ -1,6 +1,6 @@
 # Ai-Memory-Free
 
-**Current release: v1.3.0 — protocol v1, eight independently discoverable modules.**
+**Current release: v1.4.0 — protocol v1, eight independently discoverable modules.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-16a34a.svg)](LICENSE)
 [![No paid LLM API required](https://img.shields.io/badge/paid%20LLM%20API-not%20required-2563eb.svg)](docs/FAQ.md#is-ai-memory-free-really-free)
@@ -24,8 +24,11 @@ summarize, or rewrite it.
 
 The default path provides:
 
-- hybrid pgvector + full-text retrieval with transparent Reciprocal Rank Fusion
-- free in-edge `gte-small` embeddings with bounded multi-chunk averaging
+- hybrid retrieval: pgvector plus two full-text lists (all words, any word), fused
+  with transparent Reciprocal Rank Fusion — measured, see [docs/RETRIEVAL.md](docs/RETRIEVAL.md)
+- `list`: read a small namespace whole, in a fixed order, with nothing to miss
+- free in-edge `gte-small` embeddings inside a per-request budget the hosted
+  runtime can always afford; an optional keyword-only mode with no embeddings
 - namespaces, tags, metadata, provenance, retirement, and supersession
 - immutable ranking importance plus separate lifecycle decay
 - exact duplicate prevention and optional semantic compaction
@@ -57,6 +60,8 @@ share the same memory.
 | Configure MCP | [MCP guide](docs/MCP.md) |
 | Understand v1.2 modules | [Module contract](docs/MODULES.md) |
 | Upgrade from v0.2 | [v1.2 upgrade guide](docs/UPGRADE_V1_2.md) |
+| Upgrade from v1.3 | [v1.4 upgrade guide](docs/UPGRADE_V1_4.md) |
+| How recall works and how it was measured | [Retrieval](docs/RETRIEVAL.md) |
 | Move data between installations | [Portable export/import](docs/PORTABILITY.md) |
 | Call from TypeScript or HTTPS | [Integration choices](docs/AI_AGENT_INSTALL.md#integration-choices) |
 | Call the API from any language | [HTTPS action reference](docs/ACTIONS.md) |

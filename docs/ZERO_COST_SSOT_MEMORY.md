@@ -58,8 +58,9 @@ compatible recall path. Future profiles must own their dimensions, index, reinde
 and eval baseline.
 
 Supabase documents `gte-small` as English-focused and capped at 512 input tokens.
-Long memories therefore use bounded multi-chunk averaging: up to eight distributed
-chunks are embedded, averaged, and normalized. Postgres FTS indexes the complete raw
+Long memories therefore use bounded multi-chunk averaging: a few evenly distributed
+chunks (two by default, set by the per-request embedding budget) are embedded,
+averaged, and normalized. Postgres FTS indexes the complete raw
 content, so no text is discarded.
 
 Official references:
@@ -90,11 +91,12 @@ no table access; only `service_role` can query.
 `public.recall()`:
 
 1. selects a widened vector candidate pool
-2. selects a widened FTS candidate pool
-3. fuses ranks using Reciprocal Rank Fusion
-4. normalizes the fused score
-5. blends a bounded effective score
-6. returns each score component
+2. selects a widened full-text pool of memories containing every query word
+3. selects a widened full-text pool of memories containing any query word
+4. fuses the three ranked lists using Reciprocal Rank Fusion
+5. normalizes the fused score
+6. blends a bounded effective score
+7. returns each score component
 
 ```text
 effective_score = clamp(

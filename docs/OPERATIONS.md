@@ -20,9 +20,55 @@ share one database. It is guarded: on pgvector below 0.8 it records itself and
 changes nothing, and it can be re-applied after a pgvector upgrade. Versions
 `0006` and `0007` are intentionally unused upstream.
 
+Migration `0013` gives recall its third ranked list (memories sharing any word
+with the query), adds `source_system` and `external_id` to recall rows, fixes the
+full-text pool ordering, and re-applies the iterative-scan setting from `0008`,
+which recreating a function discards. Versions `0009`–`0012` are intentionally
+unused upstream. Apply it before deploying the v1.4 function: the function reads
+the new columns. See [UPGRADE_V1_4.md](UPGRADE_V1_4.md).
+
 Migration `0005` adds v1.2 modules. It is additive and leaves the v0.2 memory table,
 inline embeddings, actions, and tokens compatible. Follow
 [UPGRADE_V1_2.md](UPGRADE_V1_2.md) for the effect checks.
+
+## Settings
+
+All optional. Set them with `supabase secrets set NAME=value` and redeploy.
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `MEMORY_EMBED_CHARS_PER_REQUEST` | `3600` | Characters one request may hand to the embedding model. The default is the largest size that never failed on hosted Supabase (see [RETRIEVAL.md](RETRIEVAL.md)). Raise it only on a runtime without the 2-second CPU limit; `14400` restores the old eight-chunk average |
+| `MEMORY_EMBEDDINGS` | `on` | `off` runs keyword-only: nothing is embedded, no request can hit the CPU limit, and recall loses the matches that share no words with the query |
+| `MEMORY_MAX_CONTENT_BYTES` | unset | Operator cap on one memory's content, in UTF-8 bytes. Unset means only the 100,000-character limit applies |
+| `MEMORY_SUPABASE_SECRET_KEY_NAME` | `default` | Which entry of `SUPABASE_SECRET_KEYS` the function uses |
+| `MEMORY_REJECT_LIKELY_SECRETS` | `true` | Refuse content that looks like a credential |
+| `MEMORY_AUDIT_READS` | `false` | Also audit recall metadata |
+| `MEMORY_ALLOWED_ORIGINS` | empty | Exact browser origins allowed by CORS |
+
+`health` reports the limits in force, whether embeddings are on, and which
+Supabase key the function is running on.
+
+## Supabase API Keys
+
+Supabase is retiring the JWT `anon` and `service_role` keys at the end of 2026
+in favour of publishable and secret keys. The Edge runtime provides the secret
+keys as `SUPABASE_SECRET_KEYS` (a JSON dictionary keyed by key name) and still
+sets `SUPABASE_SERVICE_ROLE_KEY` to the legacy key. The function uses the
+`default` secret key when the runtime provides one and the legacy key
+otherwise, so a project keeps working when its legacy keys are disabled.
+
+Before disabling legacy keys on a project, confirm `health` returns
+`"server_key": "secret_keys"`. If it returns `service_role`, create a secret key
+named `default` in the dashboard (or point `MEMORY_SUPABASE_SECRET_KEY_NAME` at
+the one you have) and redeploy.
+
+## HTTP 546
+
+A 546 with no JSON body means the worker serving the request ran out of CPU. It
+is safe to send the request again — the next one gets a fresh worker — except
+for `secret_store` and an `event_append` without an `external_id`. The bundled
+client retries twice. If 546s are frequent, lower
+`MEMORY_EMBED_CHARS_PER_REQUEST` to `1800`, or set `MEMORY_EMBEDDINGS=off`.
 
 ## Provision A Client
 
@@ -178,8 +224,10 @@ limit buckets automatically prune after two days.
 
 For a safe namespace-scoped overview, call `maintenance_status`. It reports counts,
 inactive memory, unverified sources, modules, and the active embedding profile
-without returning stored content. `embedding_reindex` requires `memory:admin` and
-processes at most fifty rows per call.
+without returning stored content. `embedding_reindex` requires `memory:admin`; it
+stops when the request's embedding budget is spent and tells the caller where to
+continue. `maintenance_status` also reports document chunks still waiting for a
+vector.
 
 ## Portable Copies
 

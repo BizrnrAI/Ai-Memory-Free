@@ -53,6 +53,8 @@ Links an old row to an active replacement in the same namespace.
 ## v1.2 Module Tools
 
 - `memory_remember_batch`
+- `memory_list` — read a namespace in a fixed order, a page at a time; the
+  reliable way to load everything a project knows
 - `memory_context`
 - `memory_event_append`, `memory_event_list`
 - `memory_source_upsert`, `memory_source_link`

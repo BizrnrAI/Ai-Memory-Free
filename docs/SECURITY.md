@@ -124,6 +124,15 @@ The service role is intentionally powerful; the security-definer wrapper narrows
 the application's normal code path but is not a substitute for protecting the
 service-role key itself.
 
+Supabase is retiring the JWT `service_role` key at the end of 2026 in favour of
+secret API keys (`sb_secret_…`). The Edge runtime provides them as
+`SUPABASE_SECRET_KEYS`, a JSON dictionary keyed by key name, and the function
+uses the `default` entry when it exists (or the name in
+`MEMORY_SUPABASE_SECRET_KEY_NAME`), falling back to `SUPABASE_SERVICE_ROLE_KEY`.
+`health` reports which one is in use as `server_key`, never the key. A secret
+key carries the same power as the service role and needs the same care; the
+credential detector rejects one pasted into memory content.
+
 ## Bootstrap Token
 
 For upgrade compatibility, an Edge Function `MEMORY_TOKEN` may act as a wildcard
