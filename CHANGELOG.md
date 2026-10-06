@@ -25,9 +25,17 @@ that relied on the old duplicate handling.
   more than about 2 seconds of CPU, and `gte-small` spends most of it; a request
   that embedded more than a few chunks died with HTTP 546. The service now
   embeds at most `MEMORY_EMBED_CHARS_PER_REQUEST` characters per request
-  (default 3,600, the largest size that never failed in measurement), so a
-  memory of any allowed length is stored, and a batch that cannot fit is refused
-  up front with `413 embedding_budget_exceeded`
+  (default 3,600, the largest size that never failed in measurement) and counts
+  the fixed price of every model run, so many short texts are budgeted as
+  honestly as one long one. A memory of any allowed length is stored and
+  keyword-searchable, and a batch that cannot fit is refused up front with
+  `413 embedding_budget_exceeded`
+- `remember` reports `vector`: `full`, `sampled` or `none`, so a caller knows
+  when a long memory's vector stands for a sample of it
+- `document_ingest` can replace an earlier version in the same call
+  (`supersedes`, `replace_same_title`) and reports what it `retired` (#18)
+- CI applies every migration to a fresh database and runs
+  `scripts/sql/search-smoke.sql` against the search functions
 - documents embed in resumable steps: every chunk is written and full-text
   searchable at once, then embedded as far as the budget allows; sending the
   same document again continues. `document_ingest` returns `chunks_embedded` and
@@ -43,7 +51,8 @@ that relied on the old duplicate handling.
   which Supabase retires at the end of 2026
 - recall, context and list rows carry `source_system` and `external_id`
 - client: `MemoryRequestError` (status and details), automatic retry on HTTP
-  546 for requests that are safe to repeat, `rememberMany` (packs batches to the
+  546, 502 and 503 for requests that are safe to repeat (the remote MCP function
+  does the same), `rememberMany` (packs batches to the
   service's budget), `ingestDocumentFully`, `embedPendingDocumentChunks`
 - paginated document inventory and soft document retirement (`document_retire`),
   so stale document versions stop competing in search; ingesting a retired
@@ -75,6 +84,11 @@ that relied on the old duplicate handling.
 
 ### Fixed
 
+- a duplicate or retried `remember` (and a re-sent import page) embedded the
+  text again before discovering it was already stored; the lookup now comes
+  first, so retries cost no model time
+- portable import made retired documents active again
+- portable export pages could repeat or skip rows that share a timestamp
 - `remember` returned `500 memory_write_failed` when the content already existed
   and the caller supplied a new `external_id`; it now answers
   `409 content_already_exists` with the existing `memory_id`

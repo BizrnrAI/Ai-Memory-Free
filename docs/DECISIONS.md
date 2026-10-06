@@ -196,6 +196,13 @@ only part of the 2 seconds left; only a request small enough for the remainder i
 always safe. The eight-chunk design could not store any memory above roughly
 10,000 characters on the platform the project targets.
 
+Characters alone understate the cost: every run of the model has a fixed price,
+and a batch of thirty one-line memories killed a local worker at the
+twenty-fourth. The budget charges each chunk its characters plus a fixed 600 —
+set on the high side of what was observed — so short texts are limited by
+number. A stored memory is recognised before it is embedded, so a retry spends
+nothing.
+
 ## 2026-10-06 - Recall Fuses Three Lists, And Embeddings Are Optional
 
 Decision: recall fuses nearest vectors, all-words full-text matches, and any-word

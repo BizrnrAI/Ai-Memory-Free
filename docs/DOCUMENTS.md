@@ -27,8 +27,11 @@ runs `embedding_reindex` with `target:"document_chunks"`.
 silently enter core memory; an agent may store a durable conclusion separately and
 link it to a registered source.
 
-Corrected documents should be ingested first and then replace their predecessor
-operationally with `document_retire`. Retirement is soft: the document remains
+A corrected document replaces its predecessor in the same call: pass
+`replace_same_title: true` (retire every other active document with that
+title) or `supersedes: <document id>`. Without either, the earlier version stays
+active and the two compete in search; `document_retire` stands one down
+afterwards. Retirement is soft: the document remains
 portable and auditable, while its chunks immediately stop participating in search.
 Use `document_list` with `limit` and `offset` until `next_offset` is `null` to
 reconcile the full active corpus without direct database credentials.

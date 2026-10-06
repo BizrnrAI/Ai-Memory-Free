@@ -8,6 +8,8 @@ import {
   DEFAULT_EMBED_CHARS_PER_REQUEST,
   EMBED_CHUNK_CHARS,
   embedCharBudget,
+  embedCostBudget,
+  EMBED_RUN_OVERHEAD,
   embeddingCost,
   hasPermission,
   isMemoryKind,
@@ -17,6 +19,7 @@ import {
   sha256Hex,
   timingSafeEqualHex,
   utf8ByteLength,
+  vectorCoverage,
 } from './lib.ts';
 import { boundContext, contextCharacterBudget, isPortableResource, splitDocumentText } from './protocol.ts';
 
@@ -190,12 +193,18 @@ Deno.test('the embedding budget defaults to what hosted Supabase can always affo
   assertEquals(chunksPerText(1_000_000), 8);
 });
 
-Deno.test('a text never costs more than the chunks it is sampled down to', () => {
+Deno.test('embedding cost counts every run of the model, not only the characters', () => {
   const short = 'a short memory';
-  assertEquals(embeddingCost(short, 2), short.length);
+  assertEquals(embeddingCost(short, 2), EMBED_RUN_OVERHEAD + short.length);
   const long = 'word '.repeat(20_000);
-  assert(embeddingCost(long, 2) <= 2 * EMBED_CHUNK_CHARS);
-  assert(embeddingCost(long, 1) <= EMBED_CHUNK_CHARS);
+  assert(embeddingCost(long, 2) <= 2 * (EMBED_CHUNK_CHARS + EMBED_RUN_OVERHEAD));
+  assert(embeddingCost(long, 1) <= EMBED_CHUNK_CHARS + EMBED_RUN_OVERHEAD);
+  // One text always fits the budget it is sampled to; thirty one-liners do not.
+  assert(embeddingCost(long, chunksPerText(DEFAULT_EMBED_CHARS_PER_REQUEST)) <= embedCostBudget(DEFAULT_EMBED_CHARS_PER_REQUEST));
+  assert(30 * embeddingCost(short, 2) > embedCostBudget(DEFAULT_EMBED_CHARS_PER_REQUEST));
+  assertEquals(embedCostBudget(DEFAULT_EMBED_CHARS_PER_REQUEST), 2 * (EMBED_CHUNK_CHARS + EMBED_RUN_OVERHEAD));
+  assertEquals(vectorCoverage(short, 2), 'full');
+  assertEquals(vectorCoverage(long, 2), 'sampled');
   assertEquals(chunkEmbeddingText(long, EMBED_CHUNK_CHARS, 1).length, 1);
   assertEquals(chunkEmbeddingText(long, EMBED_CHUNK_CHARS, 2).length, 2);
 });

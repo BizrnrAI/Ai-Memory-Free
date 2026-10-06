@@ -48,9 +48,11 @@ the canonical capability discovery call.
 
 `limits` says what one request can carry, so a caller can size its writes
 without trial and error: `max_content_chars`, `max_content_bytes` (null unless
-the operator set a cap), `embed_chars_per_request` (null when embeddings are
-off), `embed_chunk_chars`, `embed_chunks_per_text`, `remember_batch_items`,
-`portable_import_records`, `document_chunks`. See [Limits](#limits).
+the operator set a cap), `embed_chars_per_request`, `embed_chunk_chars`,
+`embed_chunks_per_text`, `embed_cost_per_request` and `embed_cost_per_run` (the
+embedding budget; the two `_per_request` values are null when embeddings are
+off), `remember_batch_items`, `portable_import_records`, `document_chunks`. See
+[Limits](#limits).
 
 `server_key` is `secret_keys` or `service_role`: which Supabase key the
 function is running on, never the key itself.
@@ -76,9 +78,14 @@ No fields. Returns `client`: `id`, `name`, `token_prefix`,
 | `source_system` | string | optional identifier, ≤128; must pair with `external_id` |
 | `external_id` | string | optional, ≤512; must pair with `source_system` |
 
-Returns `{created, memory:{id, namespace, content_hash, created_at, updated_at}}`.
+Returns `{created, memory:{id, namespace, content_hash, created_at, updated_at},
+vector}`. `vector` is present when the memory was created and says how much of
+it the vector stands for: `full`, `sampled` (the text is longer than one
+request can embed, so evenly spaced windows represent it), or `none`
+(embeddings are off). Full-text search covers the whole text in every case.
 
-Duplicates, per namespace:
+Duplicates, per namespace — found by a lookup **before** anything is embedded,
+so a retry costs no model time:
 
 - the same content again (with the same `source_system`+`external_id`, or with
   none) returns the existing row with `created:false` — safe to retry after a
@@ -90,9 +97,11 @@ Duplicates, per namespace:
 - content that already exists, sent with a **new** `source_system`+`external_id`,
   fails with `409 content_already_exists` and the existing `memory_id`
 
-A long memory is stored whole and indexed whole for full-text search; its vector
-is averaged from at most `limits.embed_chunks_per_text` evenly spaced
-1,800-character windows.
+A long memory is stored whole and indexed whole for full-text search. Its vector
+is **not** unlimited: it is averaged from at most `limits.embed_chunks_per_text`
+evenly spaced 1,800-character windows (two by default), and the result says
+`vector:"sampled"`. Text that must be findable by meaning throughout belongs in
+several memories or in a document.
 
 ### `remember_batch` — `memory:write`
 
@@ -101,11 +110,13 @@ requirement difference). An item without its own `namespace` takes the batch's
 top-level `namespace`. Returns `{results:[...]}` in input order, each entry
 shaped like a `remember` result. Each item is idempotent independently.
 
-The whole batch must fit the request's embedding budget. If it does not, nothing
-is written and the call fails with `413 embedding_budget_exceeded`, carrying
-`embed_chars` (what the batch needs) and `max_embed_chars`. Split the batch; one
-item always fits on its own. The TypeScript client's `rememberMany` does the
-splitting.
+Every item must be an object (`400 items_must_be_objects`). The whole batch must
+fit the request's embedding budget. If it does not, nothing is written and the
+call fails with `413 embedding_budget_exceeded`, carrying `embed_cost` (what the
+batch needs) and `max_embed_cost`. Split the batch; one item always fits on its
+own. Short items are limited by number, not length — about seven one-line
+memories fit in a default request — because each is a separate run of the
+model. The TypeScript client's `rememberMany` does the splitting.
 
 ### `recall` — `memory:read`
 
@@ -195,9 +206,10 @@ records). Returns `{resource, namespace, imported, skipped}` — records that
 already exist are skipped, so pages can be retried. Memory records are
 re-embedded with the active profile on import, so a page of memories must fit
 the embedding budget (`413 embedding_budget_exceeded` otherwise, with nothing
-imported); `npm run portable` sizes its pages from `health`. Imported documents
-are written whole and their chunks embedded afterwards with
-`embedding_reindex` `target:"document_chunks"`.
+imported); `npm run portable` sizes its pages from `health`. A memory that is
+already present is skipped before it is embedded. Imported documents are
+written whole and their chunks embedded afterwards with `embedding_reindex`
+`target:"document_chunks"`; a document exported as retired is imported retired.
 
 ## Vault Secrets Module (optional)
 
@@ -295,8 +307,17 @@ stamps `resolved_at` without changing either memory's lifecycle. Returns
 
 `title` (required, 1..512), `content` (required, 1..100000; rejected above 64
 chunks), `namespace`, `source_uri` (≤2048), `media_type` (≤128, default
-`text/plain`), `metadata` (object). Returns `{created, reactivated, document,
-chunks_created, chunks_embedded, chunks_pending}`.
+`text/plain`), `metadata` (object), and two ways to replace an earlier version
+in the same call:
+
+- `supersedes` (uuid): the document this one replaces. It must exist in the same
+  namespace (`404 document_not_found`, `409 namespace_mismatch`, checked before
+  anything is written) and is retired once the new one is stored.
+- `replace_same_title` (boolean): retire every other active document in the
+  namespace with the same title.
+
+Returns `{created, reactivated, retired, document, chunks_created,
+chunks_embedded, chunks_pending}`; `retired` lists the ids this call stood down.
 
 Every chunk is written first and is found by full-text search at once. The call
 then embeds as many chunks as the request's embedding budget allows — two by
@@ -334,7 +355,8 @@ changed an active document.
 `unverified_sources`, `document_chunks_pending_embedding`,
 `memories_without_vector`, `limits`,
 `embedding_profile`, `modules`, and — only when the caller holds
-`memory:admin` — `database_size_bytes`. Never returns stored content.
+`memory:admin` — `database_size_bytes`. Never returns stored content. Chunks of
+retired documents are not counted as pending.
 
 ### `embedding_reindex` — `memory:admin`
 
@@ -360,8 +382,11 @@ One request can only do so much. Hosted Supabase ends a worker that uses about
 2 seconds of CPU, and the caller sees **HTTP 546** with no JSON body. The
 built-in embedding model is what uses that CPU, so the service budgets it:
 
-- one request embeds at most `limits.embed_chars_per_request` characters
-  (default 3,600)
+- every chunk the model reads costs its characters plus a fixed
+  `limits.embed_cost_per_run` (600), because each run of the model has a price
+  before it reads a word
+- one request may spend `limits.embed_cost_per_request` (default 4,800: two
+  full 1,800-character chunks, the most that never failed in measurement)
 - one text is embedded from at most `limits.embed_chunks_per_text` windows of
   `limits.embed_chunk_chars` characters, so a single `remember`, `recall` or
   `context` always fits
@@ -372,7 +397,10 @@ built-in embedding model is what uses that CPU, so the service budgets it:
 
 **An HTTP 546 is safe to retry** for every action except `secret_store` and an
 `event_append` without an `external_id`: the next request is served by a fresh
-worker. The bundled TypeScript client retries twice on its own. The numbers
+worker, and a write that did land is recognised as a duplicate without being
+embedded again. The same goes for a 502 or 503 while a worker is being replaced.
+The bundled TypeScript client and the remote MCP function retry twice on their
+own. The numbers
 behind the default, and the settings that change it, are in
 [RETRIEVAL.md](RETRIEVAL.md) and [OPERATIONS.md](OPERATIONS.md#settings).
 
@@ -382,7 +410,8 @@ Errors are stable machine-readable strings, for example `unauthorized` (401),
 `forbidden` (403, permission or namespace denied), `unknown_action` (400),
 `unsupported_protocol_version` (409), `namespace_mismatch` (409),
 `rate_limited` (429), validation codes such as
-`items_must_contain_1_to_50_records` (400) and `invalid_kind` (400),
+`items_must_contain_1_to_50_records` (400), `items_must_be_objects` (400) and
+`invalid_kind` (400), `document_not_found` (404),
 `external_id_content_conflict` and `content_already_exists` (409, with
 `memory_id`), `content_too_large` and `embedding_budget_exceeded` (413, with
 the measured and allowed sizes), `embeddings_disabled` (409), and

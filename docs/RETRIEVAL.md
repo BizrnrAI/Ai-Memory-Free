@@ -96,10 +96,24 @@ request, repeated back to back:
 | 7 | every time |
 
 So one request embeds at most two chunks — 3,600 characters — by default
-(`MEMORY_EMBED_CHARS_PER_REQUEST`). What follows from that:
+(`MEMORY_EMBED_CHARS_PER_REQUEST`).
 
-- A memory of any allowed length is stored. A long one is represented by two
-  evenly spaced 1,800-character windows, and full-text search indexes all of it.
+Length is not the whole cost. Every run of the model has a fixed price before it
+reads a word, so many short texts cost far more than one long one: in a local
+run, a batch of thirty 40-character memories killed the worker at the
+twenty-fourth. The budget therefore charges each chunk its characters plus a
+fixed 600, and a request may spend 4,800 — two full chunks. That is about seven
+one-line memories, or three of typical length, per request.
+
+What follows from that:
+
+- A memory of any allowed length is **stored and keyword-searchable**. Its
+  vector is not unlimited: a long memory is represented by two evenly spaced
+  1,800-character windows, and `remember` says so (`vector:"sampled"`). If
+  every part of a long text must be findable by meaning, store it as several
+  memories or as a document, whose chunks each get their own vector.
+- A memory that is already stored is recognised before anything is embedded, so
+  retries are free.
 - A batch or an import page that would embed more than the budget is refused
   before anything is written, with the sizes, so the caller can split it.
 - A document is embedded in steps (see [DOCUMENTS.md](DOCUMENTS.md)).

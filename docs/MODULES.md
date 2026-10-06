@@ -6,7 +6,7 @@ portable format version, and active embedding profile.
 
 | Module | Required | Owns |
 | --- | --- | --- |
-| `core` | yes | memory lifecycle, recall, context, portable protocol |
+| `core` | yes | memory lifecycle, recall, list, context, portable protocol |
 | `vault-secrets` | no | Supabase Vault metadata and explicit decrypt actions |
 | `events` | no | append-only agent/tool activity summaries |
 | `provenance` | no | sources, confidence, validity, verification, source links |

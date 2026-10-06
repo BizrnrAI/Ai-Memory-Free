@@ -139,7 +139,8 @@ This repository uses [Ai-Memory-Free](https://github.com/BizrnrAI/Ai-Memory-Free
 
 Copy \`mcp.json.example\` into the configuration format used by your AI client, then replace the token placeholder through that client secret store or process environment.
 
-At session start, call \`memory_health\` and use its protocol/module capabilities.
+At session start, call \`memory_health\` and use its protocol/module capabilities,
+then read what the project already knows with \`memory_list\` (see the policy).
 Use \`memory_context\` when work spans explicitly granted namespaces. The backend is
 v1.4.0 but protocol v1 remains compatible with older clients.
 
@@ -154,17 +155,17 @@ function agentPolicy(namespace: string) {
 
 Use the Ai-Memory-Free namespace \`${namespace}\` for durable knowledge about this project.
 
-1. Recall before making assumptions about architecture, deployment, decisions, runbooks, or prior corrections.
-2. Store only durable facts, decisions, corrections, references, and procedures that will help a future session.
+1. At the start of a session, read the standing knowledge whole: \`memory_list\` with kinds \`decision\`, \`procedure\` and \`correction\`, following \`next_offset\` to the end. A list misses nothing; a search can. Then recall before making assumptions about anything else — architecture, deployment, runbooks, prior work.
+2. Store only durable facts, decisions, corrections, references, and procedures that will help a future session. One per memory, short enough to read whole, and name the thing it is about — the words someone will search with.
 3. Include useful provenance in \`source\`, narrow tags, and a calibrated importance score.
-4. Supersede an outdated memory instead of creating conflicting active truth.
+4. Supersede an outdated memory instead of creating conflicting active truth. A reused \`external_id\` with new content is refused; write the correction as a new memory and supersede the old one.
 5. Use \`track: false\` for tests, health checks, and automated evaluation.
 6. Never store passwords, API keys, bearer tokens, private keys, or customer secrets as semantic memory.
 7. Use secret tools only from a dedicated trusted process with an explicit \`secrets:*\` grant.
 8. The memory returns ranked evidence. The calling model remains responsible for reasoning and should identify uncertainty or contradictions.
-9. Put tool/session outcomes in the optional event journal; promote only durable conclusions to semantic memory.
+9. Put tool/session outcomes ("deployed", "measured", "shipped") in the optional event journal; promote only durable conclusions to semantic memory. Activity stored as memories crowds out the standing knowledge.
 10. Register sources and contradiction links when provenance or conflicting truth matters.
-11. Keep large source text in the optional document module instead of semantic memory.
+11. Keep large source text in the optional document module instead of semantic memory. When a document is corrected, ingest the new version with \`replace_same_title\` (or \`supersedes\`) so two versions never compete in search.
 12. Use portable export for mobility; it intentionally excludes secrets and caller credentials.
 `;
 }

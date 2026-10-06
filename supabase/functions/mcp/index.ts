@@ -63,9 +63,9 @@ const tools = [
   tool('memory_link_resolve', 'Resolve a relationship without changing memory lifecycle.', objectSchema(['link_id'], {
     link_id: stringSchema(), note: stringSchema(),
   })),
-  tool('memory_document_ingest', 'Ingest a bounded text document into an optional chunk index.', objectSchema(['title', 'content'], {
+  tool('memory_document_ingest', 'Ingest a bounded text document into an optional chunk index. To replace an earlier version, pass supersedes (its id) or replace_same_title.', objectSchema(['title', 'content'], {
     namespace: stringSchema(), title: stringSchema(), content: stringSchema(), source_uri: stringSchema(),
-    media_type: stringSchema(), metadata: objectSchema(),
+    media_type: stringSchema(), metadata: objectSchema(), supersedes: stringSchema(), replace_same_title: booleanSchema(),
   })),
   tool('memory_document_search', 'Search document chunks with hybrid retrieval.', objectSchema(['query'], {
     namespace: stringSchema(), query: stringSchema(), limit: numberSchema(), pool: numberSchema(),
@@ -137,24 +137,48 @@ Deno.serve(async (request) => {
   const action = toolActions[name];
   if (!action) return jsonRpcError(rpc.id ?? null, -32602, 'Unknown tool');
   const args = isObject(rpc.params?.arguments) ? rpc.params?.arguments : {};
-  const called = await callMemory(authorization, { action, ...args });
+  let called = await callMemory(authorization, { action, ...args });
   if (called.status === 401) return unauthorized(metadataUrl);
-  const data = await safeJson(called);
+  let data = await safeJson(called);
+  // A long document is embedded a few chunks per request. Repeat the same call
+  // until none is pending, so one tool call is a finished ingest.
+  if (action === 'document_ingest' && called.ok) {
+    const first = data;
+    for (let calls = 1; Number(data.chunks_pending) > 0 && calls < 40; calls += 1) {
+      const pendingBefore = Number(data.chunks_pending);
+      called = await callMemory(authorization, { action, ...args });
+      if (!called.ok) break;
+      data = await safeJson(called);
+      if (!(Number(data.chunks_pending) < pendingBefore)) break;
+    }
+    if (called.ok) {
+      data = { ...data, created: first.created, reactivated: first.reactivated, retired: first.retired, chunks_created: first.chunks_created };
+    }
+  }
   return jsonRpcResult(rpc.id ?? null, {
     content: [{ type: 'text', text: JSON.stringify(data, null, 2) }],
     isError: !called.ok,
   });
 });
 
-function callMemory(authorization: string, body: Record<string, unknown>) {
-  return fetch(MEMORY_API_URL!, {
-    method: 'POST',
-    headers: { authorization, 'content-type': 'application/json' },
-    body: JSON.stringify({ protocol_version: '1', ...body }),
-  });
+// The memory worker can be killed for CPU time (546) or be mid-replacement
+// (502/503). The next request gets a fresh worker, so a request that is safe to
+// repeat is sent again; a secret write or an unkeyed event is not.
+async function callMemory(authorization: string, body: Record<string, unknown>) {
+  const retryable = body.action !== 'secret_store' && !(body.action === 'event_append' && !body.external_id);
+  for (let attempt = 0; ; attempt += 1) {
+    const result = await fetch(MEMORY_API_URL!, {
+      method: 'POST',
+      headers: { authorization, 'content-type': 'application/json' },
+      body: JSON.stringify({ protocol_version: '1', ...body }),
+    });
+    if (!retryable || attempt >= 2 || ![546, 502, 503].includes(result.status)) return result;
+    await result.body?.cancel();
+    await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+  }
 }
 
-async function safeJson(result: Response) {
+async function safeJson(result: Response): Promise<Record<string, unknown>> {
   try { return await result.json(); } catch { return { ok: false, error: `memory_http_${result.status}` }; }
 }
 

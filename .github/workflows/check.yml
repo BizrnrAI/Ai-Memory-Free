@@ -51,3 +51,19 @@ jobs:
           deno-version: v2.x
       - run: deno task check
       - run: deno task test
+
+  migrations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: supabase/setup-cli@v3
+        with:
+          # The version the migrations were last verified with.
+          version: 2.117.0
+      - name: Apply every migration to a fresh database
+        run: supabase db start
+      - name: Check the search functions
+        run: >-
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+          -v ON_ERROR_STOP=1 -f scripts/sql/search-smoke.sql

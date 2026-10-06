@@ -63,6 +63,10 @@ Links an old row to an active replacement in the same namespace.
   `memory_document_retire`
 - `memory_maintenance_status`
 
+`memory_remember_batch` splits what it is given into requests the service can
+embed, and `memory_document_ingest` repeats its call until every chunk has a
+vector, so each is one finished operation for the agent.
+
 These tools call the same versioned API as HTTPS and TypeScript. `memory_health`
 is the canonical capability list. Activity events never accept chain-of-thought;
 remote MCP never registers secret tools.

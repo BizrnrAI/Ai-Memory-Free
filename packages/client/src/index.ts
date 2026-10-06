@@ -52,6 +52,14 @@ export type ServiceLimits = {
   embed_chars_per_request: number | null;
   embed_chunk_chars: number;
   embed_chunks_per_text: number;
+  /**
+   * The embedding budget. Each chunk the service embeds costs its characters
+   * plus `embed_cost_per_run`; a request may spend `embed_cost_per_request`
+   * (null when embeddings are off). Many short texts cost more than their
+   * length suggests, because every one is a separate run of the model.
+   */
+  embed_cost_per_request: number | null;
+  embed_cost_per_run: number;
   remember_batch_items: number;
   portable_import_records: number;
   document_chunks: number;
@@ -61,11 +69,26 @@ export type DocumentIngestResult = {
   ok: boolean;
   created: boolean;
   reactivated: boolean;
+  /** Ids of the documents this call stood down (`supersedes`, `replace_same_title`). */
+  retired: string[];
   document: Record<string, unknown>;
   chunks_created: number;
   chunks_embedded: number;
   /** Chunks still waiting for a vector. Send the same document again to embed more. */
   chunks_pending: number;
+};
+
+export type DocumentIngestInput = {
+  namespace?: string;
+  title: string;
+  content: string;
+  source_uri?: string;
+  media_type?: string;
+  metadata?: Record<string, unknown>;
+  /** Id of the document this one replaces; it is retired once this one is stored. */
+  supersedes?: string;
+  /** Retire every other active document in the namespace that has the same title. */
+  replace_same_title?: boolean;
 };
 
 export type DocumentListInput = {
@@ -132,9 +155,11 @@ export type MemoryClientOptions = {
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
   /**
-   * Extra attempts after an HTTP 546. Hosted Supabase answers 546 when the
-   * worker serving the request ran out of CPU; the next request gets a fresh
-   * worker, so trying again is the documented remedy. Default 2.
+   * Extra attempts after an HTTP 546, 502 or 503. Hosted Supabase answers 546
+   * when the worker serving the request ran out of CPU, and 502/503 while a
+   * worker is being replaced; the next request gets a fresh worker, so trying
+   * again is the remedy. Only requests that are safe to repeat are retried.
+   * Default 2.
    */
   retries?: number;
 };
@@ -154,6 +179,8 @@ export class MemoryRequestError extends Error {
 // Actions that are not safe to send twice: a second copy would add a second
 // event (when it has no external_id) or a second secret version.
 const NOT_RETRYABLE = new Set(['secret_store']);
+// The worker died or is being replaced; nothing is wrong with the request.
+const WORKER_GONE = new Set([546, 502, 503]);
 
 export class MemoryClient {
   private readonly apiUrl: string;
@@ -253,7 +280,7 @@ export class MemoryClient {
     const limits = await this.serviceLimits();
     const results: Array<{ created: boolean; memory: Record<string, unknown> }> = [];
     for (const batch of packByEmbedBudget(items, (item) => item.content, limits, limits?.remember_batch_items ?? 50)) {
-      const stored = await this.request<{ ok: boolean; results: typeof results }>({
+      const stored: { ok: boolean; results: typeof results } = await this.request({
         action: 'remember_batch',
         namespace,
         items: batch,
@@ -312,12 +339,12 @@ export class MemoryClient {
    * with `chunks_pending` above 0; its text is already searchable, and sending
    * it again embeds the next chunks. `ingestDocumentFully` does that for you.
    */
-  async ingestDocument(input: Record<string, unknown>) {
+  async ingestDocument(input: DocumentIngestInput | Record<string, unknown>) {
     return await this.call<DocumentIngestResult>('document_ingest', input);
   }
 
   /** Ingests a document and repeats the call until every chunk has its vector. */
-  async ingestDocumentFully(input: Record<string, unknown>, maxCalls = 80) {
+  async ingestDocumentFully(input: DocumentIngestInput | Record<string, unknown>, maxCalls = 80) {
     let result = await this.ingestDocument(input);
     const first = result;
     for (let calls = 1; result.chunks_pending > 0 && calls < maxCalls; calls += 1) {
@@ -325,7 +352,13 @@ export class MemoryClient {
       result = await this.ingestDocument(input);
       if (result.chunks_pending >= pendingBefore) break; // no progress: stop rather than loop
     }
-    return { ...result, created: first.created, reactivated: first.reactivated, chunks_created: first.chunks_created };
+    return {
+      ...result,
+      created: first.created,
+      reactivated: first.reactivated,
+      retired: first.retired,
+      chunks_created: first.chunks_created,
+    };
   }
 
   async searchDocuments(input: Record<string, unknown>) {
@@ -428,8 +461,8 @@ export class MemoryClient {
       try {
         return await this.requestOnce<T>(body);
       } catch (error) {
-        const outOfCpu = error instanceof MemoryRequestError && error.status === 546;
-        if (!outOfCpu || !retryable || attempt >= this.retries) throw error;
+        const workerGone = error instanceof MemoryRequestError && WORKER_GONE.has(error.status);
+        if (!workerGone || !retryable || attempt >= this.retries) throw error;
         await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
       }
     }
@@ -471,24 +504,32 @@ export class MemoryClient {
 }
 
 /**
- * Splits items into batches whose embedding cost fits one request. The cost of
- * a text is what the service will actually read of it: its length, capped at
- * the chunks it samples. One item always fits on its own.
+ * Splits items into batches whose embedding cost fits one request, using the
+ * limits the service reports. The cost of a text is what the service will spend
+ * on it: for each chunk it samples, the chunk's characters plus the fixed price
+ * of a run. One item always fits on its own.
  */
 export function packByEmbedBudget<T>(
   items: T[],
   textOf: (item: T) => string,
-  limits: Pick<ServiceLimits, 'embed_chars_per_request' | 'embed_chunk_chars' | 'embed_chunks_per_text'> | null,
+  limits: Pick<ServiceLimits, 'embed_chunk_chars' | 'embed_chunks_per_text' | 'embed_cost_per_request' | 'embed_cost_per_run'> | null,
   maxItems: number,
 ): T[][] {
-  // A service older than 1.4.0 reports no limits; assume the hosted default.
-  const budget = limits ? limits.embed_chars_per_request : 3_600;
-  const perText = limits ? limits.embed_chunks_per_text * limits.embed_chunk_chars : 3_600;
+  // A service older than 1.4.0 reports no limits; assume the hosted defaults.
+  const budget = limits ? limits.embed_cost_per_request : 4_800;
+  const chunkChars = limits?.embed_chunk_chars ?? 1_800;
+  const chunksPerText = limits?.embed_chunks_per_text ?? 2;
+  const perRun = limits?.embed_cost_per_run ?? 600;
+  const costOf = (text: string) => {
+    const length = text.trim().length;
+    const chunks = Math.max(1, Math.min(chunksPerText, Math.ceil(length / chunkChars)));
+    return chunks * perRun + Math.min(length, chunks * chunkChars);
+  };
   const batches: T[][] = [];
   let current: T[] = [];
   let used = 0;
   for (const item of items) {
-    const cost = budget === null ? 0 : Math.min(textOf(item).trim().length, perText);
+    const cost = budget === null ? 0 : costOf(textOf(item));
     if (current.length > 0 && (current.length >= maxItems || (budget !== null && used + cost > budget))) {
       batches.push(current);
       current = [];

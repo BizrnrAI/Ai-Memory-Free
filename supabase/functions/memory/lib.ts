@@ -31,7 +31,17 @@ export function utf8ByteLength(value: string) {
 // migration 0013). A 546 is safe to retry — the next request gets a fresh
 // worker — and the bundled client does. Self-hosted runtimes without the CPU cap
 // can raise the budget with MEMORY_EMBED_CHARS_PER_REQUEST.
+//
+// Characters are not the whole cost. Every run of the model has a fixed price
+// before it reads a word, so thirty one-line memories are far dearer than one
+// memory thirty lines long: in a local run, a batch of thirty 40-character
+// texts killed the worker at the twenty-fourth. Cost is therefore counted per
+// chunk as its characters plus EMBED_RUN_OVERHEAD, set on the high side of what
+// was measured, and a request may spend what two full chunks cost.
 export const EMBED_CHUNK_CHARS = 1_800;
+// What one run of the model costs before it reads any text, in the same unit as
+// a character of text.
+export const EMBED_RUN_OVERHEAD = 600;
 export const DEFAULT_EMBED_CHARS_PER_REQUEST = 3_600;
 export const MIN_EMBED_CHARS_PER_REQUEST = EMBED_CHUNK_CHARS;
 export const MAX_EMBED_CHARS_PER_REQUEST = 1_000_000;
@@ -52,9 +62,24 @@ export function chunksPerText(budgetChars: number) {
   return Math.max(1, Math.min(MAX_CHUNKS_PER_TEXT, Math.floor(budgetChars / EMBED_CHUNK_CHARS)));
 }
 
-/** Characters the model will actually read for this text: the cost charged to the budget. */
+/** What embedding this text costs: for each chunk the model reads, its characters plus the fixed price of a run. */
 export function embeddingCost(text: string, maxChunks: number) {
-  return chunkEmbeddingText(text, EMBED_CHUNK_CHARS, maxChunks).reduce((sum, chunk) => sum + chunk.length, 0);
+  return chunkEmbeddingText(text, EMBED_CHUNK_CHARS, maxChunks)
+    .reduce((sum, chunk) => sum + EMBED_RUN_OVERHEAD + chunk.length, 0);
+}
+
+/** What one request may spend on embedding: the cost of as many full chunks as the character budget holds. */
+export function embedCostBudget(budgetChars: number) {
+  return Math.max(1, Math.floor(budgetChars / EMBED_CHUNK_CHARS)) * (EMBED_CHUNK_CHARS + EMBED_RUN_OVERHEAD);
+}
+
+/**
+ * How much of a text its vector represents: `full` when every chunk was
+ * embedded, `sampled` when the text needed more chunks than one request may
+ * embed and evenly spaced windows stand in for it.
+ */
+export function vectorCoverage(text: string, maxChunks: number): 'full' | 'sampled' {
+  return chunkEmbeddingText(text, EMBED_CHUNK_CHARS, Number.MAX_SAFE_INTEGER).length > maxChunks ? 'sampled' : 'full';
 }
 
 /** An optional operator cap on memory content, in UTF-8 bytes (MEMORY_MAX_CONTENT_BYTES). */

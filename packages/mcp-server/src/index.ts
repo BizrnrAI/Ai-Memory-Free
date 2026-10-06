@@ -53,7 +53,7 @@ function buildServer() {
   server.registerTool(
     'memory_remember_batch',
     {
-      description: 'Store up to 50 idempotent durable memories in one request.',
+      description: 'Store up to 50 idempotent durable memories. The adapter splits them into requests the service can embed, so any mix of sizes works.',
       inputSchema: z.object({
         items: z.array(z.object({
           content: z.string().min(1).max(100_000), namespace: z.string().optional(),
@@ -64,7 +64,7 @@ function buildServer() {
         })).min(1).max(50),
       }),
     },
-    async (args) => asText(await client.rememberBatch(args.items)),
+    async (args) => asText({ ok: true, results: await client.rememberMany(args.items) }),
   );
 
   server.registerTool(
@@ -201,14 +201,19 @@ function buildServer() {
   server.registerTool(
     'memory_document_ingest',
     {
-      description: 'Ingest bounded text into the optional document/chunk module. A long document comes back with chunks_pending above 0: it is searchable at once, and calling again with the same content embeds the next chunks.',
+      description: 'Ingest bounded text into the optional document/chunk module. To replace an earlier version, pass supersedes (its id) or replace_same_title, so two versions never compete in search.',
       inputSchema: z.object({
         namespace: z.string().optional(), title: z.string().min(1).max(512), content: z.string().min(1).max(100_000),
         source_uri: z.string().max(2048).optional(), media_type: z.string().max(128).optional(),
         metadata: z.record(z.string(), z.unknown()).optional(),
+        supersedes: z.string().uuid().optional()
+          .describe('Id of the document this one replaces; it is retired once this one is stored.'),
+        replace_same_title: z.boolean().optional()
+          .describe('Retire every other active document in the namespace with the same title.'),
       }),
     },
-    async (args) => asText(await client.ingestDocument(args)),
+    // Repeats the call until every chunk has its vector, so one tool call is a finished ingest.
+    async (args) => asText(await client.ingestDocumentFully(args)),
   );
 
   server.registerTool(

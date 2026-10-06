@@ -37,12 +37,15 @@ untouched; nothing needs re-embedding.
   write a new memory and `supersede` the old one.
 - **An unknown `kind` is now a 400** (`invalid_kind`). It used to become a `note`.
 - **`remember_batch` and `portable_import` can answer 413**
-  (`embedding_budget_exceeded`) when a batch is too large to embed in one
-  request. On hosted Supabase those batches already failed, with an HTTP 546 and
+  (`embedding_budget_exceeded`, with `embed_cost` and `max_embed_cost`) when a
+  batch is too large to embed in one request. Short items count too: about
+  seven one-line memories fit. On hosted Supabase those batches already failed, with an HTTP 546 and
   no explanation. Split the batch, or use the client's `rememberMany` and
   `npm run portable`, which size their requests from `health`.
 - **Batch items without a `namespace` go to the batch's `namespace`**, not
   `default`.
+- **A long memory's vector covers a sample of it**, and `remember` says so with
+  `vector:"sampled"`. The whole text is still stored and keyword-searchable.
 - **`document_ingest` may return `chunks_pending` above 0.** The document is
   searchable; send it again, or use `ingestDocumentFully`, to finish its vectors.
 - **Recall returns different, better-ranked results** for questions, and each row

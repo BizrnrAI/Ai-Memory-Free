@@ -100,14 +100,14 @@ test('client retries a request the host cut off for CPU time, and no other failu
   let refused = 0;
   const refusing: typeof fetch = async () => {
     refused += 1;
-    return new Response(JSON.stringify({ ok: false, error: 'embedding_budget_exceeded', max_embed_chars: 3600 }), { status: 413 });
+    return new Response(JSON.stringify({ ok: false, error: 'embedding_budget_exceeded', max_embed_cost: 4800 }), { status: 413 });
   };
   const strict = new MemoryClient({ apiUrl: 'https://memory.example.test', token: 't', fetchImpl: refusing });
   await assert.rejects(strict.rememberBatch([{ content: 'x' }]), (error: unknown) => {
     assert.ok(error instanceof MemoryRequestError);
     assert.equal(error.message, 'embedding_budget_exceeded');
     assert.equal(error.status, 413);
-    assert.equal(error.body.max_embed_chars, 3600);
+    assert.equal(error.body.max_embed_cost, 4800);
     return true;
   });
   assert.equal(refused, 1);
@@ -126,15 +126,28 @@ test('client never repeats a write that is not safe to send twice', async () => 
   seen.length = 0;
   await assert.rejects(client.appendEvent({ event_type: 'task.done', summary: 'keyed', source_system: 's', external_id: 'e1' }));
   assert.equal(seen.length, 3);
+  // A worker being replaced answers 502 or 503: the same rule applies.
+  let attempts = 0;
+  const flaky: typeof fetch = async () => {
+    attempts += 1;
+    return attempts === 1 ? new Response('', { status: 503 }) : new Response(JSON.stringify({ ok: true, results: [] }));
+  };
+  await new MemoryClient({ apiUrl: 'https://memory.example.test', token: 't', fetchImpl: flaky }).recall({ query: 'q' });
+  assert.equal(attempts, 2);
 });
 
 test('batches are packed to the embedding budget the service reports', () => {
-  const limits = { embed_chars_per_request: 3600, embed_chunk_chars: 1800, embed_chunks_per_text: 2 };
-  const items = ['a'.repeat(1000), 'b'.repeat(1000), 'c'.repeat(2000), 'd'.repeat(50_000), 'e'.repeat(10)];
+  const limits = { embed_chunk_chars: 1800, embed_chunks_per_text: 2, embed_cost_per_request: 4800, embed_cost_per_run: 600 };
+  const items = ['a'.repeat(1000), 'b'.repeat(1000), 'c'.repeat(1000), 'd'.repeat(50_000), 'e'.repeat(10)];
   const batches = packByEmbedBudget(items, (text) => text, limits, 50);
-  // 1000+1000 fit; adding 2000 would exceed 3600. The 50,000-character text costs only the 3,600 it is sampled to.
-  assert.deepEqual(batches.map((batch) => batch.map((text) => text[0])), [['a', 'b'], ['c'], ['d'], ['e']]);
-  assert.deepEqual(packByEmbedBudget(items, (text) => text, { ...limits, embed_chars_per_request: null }, 2).map((batch) => batch.length), [2, 2, 1]);
+  // Each 1,000-character text costs 1,600 (its characters plus one run): three fit in 4,800.
+  // The 50,000-character text is sampled to two chunks and costs the whole budget.
+  assert.deepEqual(batches.map((batch) => batch.map((text) => text[0])), [['a', 'b', 'c'], ['d'], ['e']]);
+  // Short texts are limited by the price of a run, not by their length: 7 fit, the 8th does not.
+  const tiny = Array.from({ length: 20 }, (_, index) => `note ${index}`);
+  assert.deepEqual(packByEmbedBudget(tiny, (text) => text, limits, 50).map((batch) => batch.length), [7, 7, 6]);
+  // Embeddings off: only the item limit applies.
+  assert.deepEqual(packByEmbedBudget(items, (text) => text, { ...limits, embed_cost_per_request: null }, 2).map((batch) => batch.length), [2, 2, 1]);
   assert.deepEqual(packByEmbedBudget([], (text: string) => text, limits, 50), []);
 });
 
