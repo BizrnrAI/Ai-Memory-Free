@@ -38,7 +38,7 @@
     "test:service": "tsx scripts/test-local-service.ts"
   },
   "devDependencies": {
-    "@types/node": "^24.19.1",
+    "@types/node": "^26.6.4",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   }
