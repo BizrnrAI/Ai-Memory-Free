@@ -21,6 +21,7 @@ Telemetry: none
 
 - Architecture: ./docs/ARCHITECTURE.md
 - Security and Supabase Vault: ./docs/SECURITY.md
+- Encrypted API keys and tokens: ./docs/SECRETS.md
 - MCP: ./docs/MCP.md
 - Operations: ./docs/OPERATIONS.md
 - Exact replication: ./docs/REPLICATE.md
@@ -36,6 +37,7 @@ Telemetry: none
 - Upgrade from v0.2: ./docs/UPGRADE_V1_2.md
 - Upgrade from v1.3: ./docs/UPGRADE_V1_4.md
 - Canonical implementation guide: ./docs/ZERO_COST_SSOT_MEMORY.md
+- Release notes: ./CHANGELOG.md
 
 The memory stores and retrieves ranked evidence. The calling model performs
 reasoning and synthesis. Do not store credentials in semantic memory.

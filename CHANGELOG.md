@@ -3,6 +3,27 @@
 Notable changes are documented here. Versions follow semantic versioning after the
 first public release.
 
+## Unreleased
+
+### Documentation
+
+- The replication checklist applies every migration in `supabase/migrations/`
+  instead of naming the first five, and points at the decision about the
+  scheduled decay and expiry jobs.
+- The install contract links the v1.4 upgrade guide and no longer quotes an
+  action count; `health` is the list.
+- Portable import is described as it works since 1.4.0: batches sized from the
+  destination's limits.
+- The two dated records that describe eight-chunk embeddings (the 2026-07-09
+  decision and the audit) now say what replaced it.
+- README, `llms.txt`, and the repository map link the release notes, the
+  retrieval guide, the credential guide, and the v1.4 upgrade guide.
+
+### Maintenance
+
+- Dependabot leaves `@types/node` major versions alone: they follow the Node
+  version CI runs.
+
 ## 1.4.0 - 2026-10-06
 
 Upgrade notes: [docs/UPGRADE_V1_4.md](docs/UPGRADE_V1_4.md). Apply the two new

@@ -46,7 +46,8 @@ Use this when the user has no existing Ai-Memory-Free API.
 
 2. Read `README.md`, `docs/MODULES.md`, `docs/PROTOCOL.md`,
    `docs/SECURITY.md`, and every migration before applying it. For an existing
-   installation, also read `docs/UPGRADE_V1_2.md`.
+   installation, also read the upgrade guide for the release it runs:
+   `docs/UPGRADE_V1_2.md` (from v0.2) or `docs/UPGRADE_V1_4.md` (from v1.3).
 
 3. Verify the local source:
 
@@ -145,7 +146,8 @@ provided. Never use `--force` without reading the diff.
 ### MCP
 
 Best for coding agents and desktop AI clients. The MCP adapter calls the same HTTPS
-API and exposes health, identity, remember, recall, retire, and supersede tools.
+API and exposes health, identity, remember, recall, list, retire, and supersede
+tools, plus the module tools listed in [MCP.md](MCP.md).
 
 Do not enable secret tools for a general-purpose model session. A dedicated trusted
 process may opt in with `MCP_ENABLE_SECRET_TOOLS=true` and separate `secrets:*`
@@ -186,8 +188,8 @@ published to npm.
 
 Best for any other language. Send JSON POST requests with
 `Authorization: Bearer <scoped token>`. The complete per-action contract —
-fields, bounds, permissions, response shapes, and error codes for all 27
-actions — is [ACTIONS.md](ACTIONS.md).
+fields, bounds, permissions, response shapes, and error codes for every
+action `health` reports — is [ACTIONS.md](ACTIONS.md).
 
 ## Required Verification
 

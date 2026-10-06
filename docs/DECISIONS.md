@@ -99,6 +99,10 @@ long memory. Chunk averaging covers the whole item without a destructive schema
 rewrite, while FTS continues to index every character. A future large-document
 corpus may justify a separate document/chunk model and a new eval baseline.
 
+Revised 2026-10-06: eight chunks cost more CPU than a hosted worker has. The
+default is now two chunks per request, raised with one setting; see "One Request
+Embeds What The Hosted Runtime Can Always Afford" below.
+
 ## 2026-07-09 - Stdio MCP Remains The Free Default Transport
 
 Decision: keep MCP as a local stdio adapter using environment credentials. Do not

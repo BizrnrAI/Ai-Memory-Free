@@ -13,6 +13,11 @@ updates:
     groups:
       toolchain:
         patterns: ["*"]
+    # The Node types follow the Node version CI runs (check.yml), so a major
+    # bump of the types is a runtime decision, not a dependency update.
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:

@@ -1,6 +1,9 @@
 # Ai-Memory-Free
 
 **Current release: v1.4.0 — protocol v1, eight independently discoverable modules.**
+Release notes: [CHANGELOG.md](CHANGELOG.md) and
+[GitHub releases](https://github.com/BizrnrAI/Ai-Memory-Free/releases). Upgrading
+from v1.3: [docs/UPGRADE_V1_4.md](docs/UPGRADE_V1_4.md).
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-16a34a.svg)](LICENSE)
 [![No paid LLM API required](https://img.shields.io/badge/paid%20LLM%20API-not%20required-2563eb.svg)](docs/FAQ.md#is-ai-memory-free-really-free)
@@ -184,8 +187,8 @@ The always-on core tool set is:
 - `memory_retire`
 - `memory_supersede`
 
-v1.2 also registers context, batch, event, provenance, relationship, document, and
-maintenance tools. `memory_health` is the machine-readable capability source.
+The adapter also registers list, context, batch, event, provenance, relationship,
+document, and maintenance tools. `memory_health` is the machine-readable capability source.
 
 Encrypted-secret tools are absent unless the operator explicitly sets
 `MCP_ENABLE_SECRET_TOOLS=true` **and** gives that client the matching secret
@@ -254,7 +257,11 @@ MEMORY_EVAL_FIXTURES=eval/fixtures.local.json npm run eval
 - `docs/DOCUMENTS.md` - optional text document ingestion and search
 - `docs/PORTABILITY.md` - checksummed export/import
 - `docs/REMOTE_MCP.md` - optional Supabase OAuth 2.1 remote MCP
-- `docs/UPGRADE_V1_2.md` - additive upgrade and rollback
+- `docs/UPGRADE_V1_2.md` - additive upgrade from v0.2 and rollback
+- `docs/UPGRADE_V1_4.md` - upgrade from v1.3: migrations, new limits, changed responses
+- `docs/RETRIEVAL.md` - how recall works, what was measured, embedding budget and modes
+- `docs/SECRETS.md` - storing and reading encrypted API keys and tokens
+- `CHANGELOG.md` - release notes for every version
 - `docs/FAQ.md` - ownership, cost, model, security, and integration answers
 - `docs/AUDIT.md` - full-repository audit and remediation record
 - `docs/ARCHITECTURE.md` - system shape and trust boundaries

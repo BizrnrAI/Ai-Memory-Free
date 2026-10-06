@@ -11,6 +11,19 @@ architecture while adding the controls required for multiple agents and outside
 services: hashed client credentials, least privilege, namespace enforcement,
 bounded abuse controls, auditable mutations, and Supabase Vault encrypted secrets.
 
+This file is a dated record. Where a later release changed something it
+describes, the note below says so and the current behavior is in the linked
+document.
+
+- The long-memory remedy (average up to eight chunks) exceeded the hosted Edge
+  CPU limit and failed with HTTP 546. Since v1.4.0 one request embeds two chunks
+  by default, the response says whether the vector is `full` or `sampled`, and
+  full-text search still covers every character. See [RETRIEVAL.md](RETRIEVAL.md).
+- The separate document/chunk schema anticipated under "Deliberate Boundaries"
+  shipped in v1.2. See [DOCUMENTS.md](DOCUMENTS.md).
+- The migrations verified here are the ones that existed at the audit date. The
+  current set is `supabase/migrations/`.
+
 ## v1.2 Follow-Up Audit
 
 Follow-up date: 2026-07-10. The twelve roadmap improvements were implemented as
