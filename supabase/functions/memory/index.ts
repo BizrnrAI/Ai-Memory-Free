@@ -14,6 +14,7 @@ import { createGteSmallAdapter, GTE_SMALL_PROFILE } from './embedding.ts';
 import {
   ACTIONS,
   boundContext,
+  contextCharacterBudget,
   isPortableResource,
   MODULES,
   PORTABLE_FORMAT,
@@ -86,6 +87,7 @@ type RequestBody = {
   source_uri?: string;
   media_type?: string;
   max_chars?: number;
+  max_characters?: number;
   per_namespace_limit?: number;
   include_events?: boolean;
   resource?: string;
@@ -151,6 +153,7 @@ const actionHandlers: Record<string, ActionHandler> = {
   document_ingest: handleDocumentIngest,
   document_search: handleDocumentSearch,
   document_list: handleDocumentList,
+  document_retire: handleDocumentRetire,
   maintenance_status: handleMaintenanceStatus,
   embedding_reindex: handleEmbeddingReindex,
   portable_export: handlePortableExport,
@@ -368,7 +371,12 @@ async function handleContext(context: RequestContext, input: RequestBody) {
   const namespaces = cleanNamespaces(input.namespaces ?? (input.namespace ? [input.namespace] : ['default']));
   for (const namespace of namespaces) requireAccess(context.caller, 'memory:read', namespace);
   const perNamespaceLimit = Math.trunc(clampNumber(input.per_namespace_limit ?? 8, 1, 20));
-  const maxChars = Math.trunc(clampNumber(input.max_chars ?? 20_000, 1_000, 100_000));
+  let maxChars: number;
+  try {
+    maxChars = contextCharacterBudget(input);
+  } catch {
+    throw new ApiError('invalid_context_budget', 400);
+  }
   const embedding = await embed(query);
   const recalled = await Promise.all(namespaces.map(async (namespace) => {
     const { data, error } = await db.rpc('recall', {
@@ -647,12 +655,44 @@ async function handleDocumentSearch(context: RequestContext, input: RequestBody)
 async function handleDocumentList(context: RequestContext, input: RequestBody) {
   const namespace = cleanNamespace(input.namespace);
   requireAccess(context.caller, 'memory:read', namespace);
-  const { data, error } = await db.from('memory_documents')
-    .select('id, namespace, title, source_uri, media_type, content_hash, metadata, created_at, updated_at')
-    .eq('namespace', namespace).eq('is_active', true)
-    .order('updated_at', { ascending: false }).limit(Math.trunc(clampNumber(input.limit ?? 100, 1, 500)));
+  const limit = Math.trunc(clampNumber(input.limit ?? 100, 1, 500));
+  const offset = Math.trunc(clampNumber(input.offset ?? 0, 0, 1_000_000));
+  let query = db.from('memory_documents')
+    .select('id, namespace, title, source_uri, media_type, content_hash, metadata, is_active, created_at, updated_at')
+    .eq('namespace', namespace)
+    .order('updated_at', { ascending: false })
+    .order('id', { ascending: true })
+    .range(offset, offset + limit);
+  if (!input.include_retired) query = query.eq('is_active', true);
+  const { data, error } = await query;
   if (error) throw new ApiError('document_list_failed', 500);
-  return json({ ok: true, documents: data ?? [] }, 200, context.request);
+  const rows = data ?? [];
+  const hasMore = rows.length > limit;
+  return json({
+    ok: true,
+    documents: rows.slice(0, limit),
+    next_offset: hasMore ? offset + limit : null,
+  }, 200, context.request);
+}
+
+async function handleDocumentRetire(context: RequestContext, input: RequestBody) {
+  const id = requiredUuid(input.id, 'id');
+  const existing = await db.from('memory_documents')
+    .select('id, namespace, is_active')
+    .eq('id', id)
+    .maybeSingle();
+  if (existing.error || !existing.data) throw new ApiError('document_not_found', 404);
+  requireAccess(context.caller, 'memory:write', existing.data.namespace);
+  const reason = trimOptional(input.reason, 2048);
+  if (existing.data.is_active) {
+    const { error } = await db.from('memory_documents').update({ is_active: false }).eq('id', id);
+    if (error) throw new ApiError('document_retire_failed', 500);
+  }
+  await audit(context, 'document_retire', existing.data.namespace, id, true, {
+    changed: existing.data.is_active,
+    reason_provided: Boolean(reason),
+  });
+  return json({ ok: true, id, retired: existing.data.is_active }, 200, context.request);
 }
 
 async function handleMaintenanceStatus(context: RequestContext, input: RequestBody) {

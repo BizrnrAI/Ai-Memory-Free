@@ -11,7 +11,7 @@ portable format version, and active embedding profile.
 | `events` | no | append-only agent/tool activity summaries |
 | `provenance` | no | sources, confidence, validity, verification, source links |
 | `relationships` | no | supports/contradicts/derived-from/related links |
-| `documents` | no | text documents, chunks, hybrid document search |
+| `documents` | no | text documents, chunks, hybrid search, paginated inventory, retirement |
 | `maintenance` | no | safe counts, profile status, bounded reindex batches |
 | `remote-mcp` | no | sessionless HTTP MCP protected by Supabase OAuth 2.1 |
 

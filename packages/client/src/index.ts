@@ -21,6 +21,23 @@ export type RecallInput = {
   track?: boolean;
 };
 
+export type ContextInput = {
+  query: string;
+  namespaces?: string[];
+  max_chars?: number;
+  /** @deprecated Use max_chars. Retained for compatibility with early adapters. */
+  max_characters?: number;
+  per_namespace_limit?: number;
+  include_events?: boolean;
+};
+
+export type DocumentListInput = {
+  namespace?: string;
+  limit?: number;
+  offset?: number;
+  include_retired?: boolean;
+};
+
 export type SecretStoreInput = {
   namespace?: string;
   name: string;
@@ -141,13 +158,7 @@ export class MemoryClient {
     );
   }
 
-  async context(input: {
-    query: string;
-    namespaces?: string[];
-    max_chars?: number;
-    per_namespace_limit?: number;
-    include_events?: boolean;
-  }) {
+  async context(input: ContextInput) {
     return await this.call<Record<string, unknown>>('context', input);
   }
 
@@ -185,6 +196,14 @@ export class MemoryClient {
 
   async searchDocuments(input: Record<string, unknown>) {
     return await this.call<Record<string, unknown>>('document_search', input);
+  }
+
+  async listDocuments(input: DocumentListInput = {}) {
+    return await this.call<Record<string, unknown>>('document_list', input);
+  }
+
+  async retireDocument(id: string, reason?: string) {
+    return await this.call<Record<string, unknown>>('document_retire', { id, reason });
   }
 
   async maintenanceStatus(namespace?: string) {
