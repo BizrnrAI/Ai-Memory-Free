@@ -2,11 +2,21 @@ import {
   averageNormalizedEmbeddings,
   bearerToken,
   chunkEmbeddingText,
+  chunksPerText,
   containsLikelySecret,
+  contentByteLimit,
+  DEFAULT_EMBED_CHARS_PER_REQUEST,
+  EMBED_CHUNK_CHARS,
+  embedCharBudget,
+  embeddingCost,
   hasPermission,
+  isMemoryKind,
+  MEMORY_KINDS,
   namespaceAllowed,
+  resolveSupabaseServerKey,
   sha256Hex,
   timingSafeEqualHex,
+  utf8ByteLength,
 } from './lib.ts';
 import { boundContext, contextCharacterBudget, isPortableResource, splitDocumentText } from './protocol.ts';
 
@@ -168,3 +178,57 @@ function assertThrows(operation: () => unknown, expected: string) {
   }
   throw new Error(`expected ${expected} to be thrown`);
 }
+
+Deno.test('the embedding budget defaults to what hosted Supabase can always afford', () => {
+  assertEquals(embedCharBudget(undefined), DEFAULT_EMBED_CHARS_PER_REQUEST);
+  assertEquals(embedCharBudget(''), DEFAULT_EMBED_CHARS_PER_REQUEST);
+  assertEquals(embedCharBudget('not a number'), DEFAULT_EMBED_CHARS_PER_REQUEST);
+  assertEquals(embedCharBudget('100'), EMBED_CHUNK_CHARS);
+  assertEquals(embedCharBudget('14400'), 14_400);
+  assertEquals(chunksPerText(DEFAULT_EMBED_CHARS_PER_REQUEST), 2);
+  assertEquals(chunksPerText(EMBED_CHUNK_CHARS), 1);
+  assertEquals(chunksPerText(1_000_000), 8);
+});
+
+Deno.test('a text never costs more than the chunks it is sampled down to', () => {
+  const short = 'a short memory';
+  assertEquals(embeddingCost(short, 2), short.length);
+  const long = 'word '.repeat(20_000);
+  assert(embeddingCost(long, 2) <= 2 * EMBED_CHUNK_CHARS);
+  assert(embeddingCost(long, 1) <= EMBED_CHUNK_CHARS);
+  assertEquals(chunkEmbeddingText(long, EMBED_CHUNK_CHARS, 1).length, 1);
+  assertEquals(chunkEmbeddingText(long, EMBED_CHUNK_CHARS, 2).length, 2);
+});
+
+Deno.test('the optional content cap is measured in UTF-8 bytes', () => {
+  assertEquals(contentByteLimit(undefined), null);
+  assertEquals(contentByteLimit(''), null);
+  assertEquals(contentByteLimit('5000'), 5_000);
+  assertEquals(contentByteLimit('1'), 256);
+  assertEquals(utf8ByteLength('abc'), 3);
+  assertEquals(utf8ByteLength('é'), 2);
+});
+
+Deno.test('memory kinds are an explicit list', () => {
+  assertEquals(MEMORY_KINDS.length, 6);
+  assert(isMemoryKind('decision'));
+  assert(!isMemoryKind('banana'));
+  assert(!isMemoryKind(undefined));
+});
+
+Deno.test('the server key prefers the new Supabase secret keys and falls back to the legacy one', () => {
+  const secretKeys = JSON.stringify({ default: 'sb_secret_default', memory: 'sb_secret_named' });
+  assertEquals(JSON.stringify(resolveSupabaseServerKey({ secretKeys, serviceRoleKey: 'legacy' })), JSON.stringify({ key: 'sb_secret_default', source: 'secret_keys' }));
+  assertEquals(JSON.stringify(resolveSupabaseServerKey({ secretKeys, keyName: 'memory', serviceRoleKey: 'legacy' })), JSON.stringify({ key: 'sb_secret_named', source: 'secret_keys' }));
+  // A name that is not in the dictionary, an empty dictionary, or text that is not JSON: use the legacy key.
+  assertEquals(JSON.stringify(resolveSupabaseServerKey({ secretKeys, keyName: 'absent', serviceRoleKey: 'legacy' })), JSON.stringify({ key: 'legacy', source: 'service_role' }));
+  assertEquals(JSON.stringify(resolveSupabaseServerKey({ secretKeys: '{}', serviceRoleKey: 'legacy' })), JSON.stringify({ key: 'legacy', source: 'service_role' }));
+  assertEquals(JSON.stringify(resolveSupabaseServerKey({ secretKeys: 'not json', serviceRoleKey: 'legacy' })), JSON.stringify({ key: 'legacy', source: 'service_role' }));
+  assertEquals(JSON.stringify(resolveSupabaseServerKey({ secretKeys: '["a"]', serviceRoleKey: ' ' })), JSON.stringify(null));
+  assertEquals(JSON.stringify(resolveSupabaseServerKey({})), JSON.stringify(null));
+});
+
+Deno.test('a Supabase secret API key is caught, a publishable one is not', () => {
+  assert(containsLikelySecret('key: sb_secret_' + 'A1b2C3d4E5f6G7h8I9j0K1l2'));
+  assert(!containsLikelySecret('key: sb_publishable_' + 'A1b2C3d4E5f6G7h8I9j0K1l2'));
+});

@@ -1,5 +1,101 @@
 export const MAX_REQUEST_BYTES = 1_048_576;
 
+export const MEMORY_KINDS = [
+  'note', 'fact', 'decision', 'correction', 'reference', 'procedure',
+] as const;
+export type MemoryKind = typeof MEMORY_KINDS[number];
+
+export function isMemoryKind(value: unknown): value is MemoryKind {
+  return typeof value === 'string' && (MEMORY_KINDS as readonly string[]).includes(value);
+}
+
+export function utf8ByteLength(value: string) {
+  return new TextEncoder().encode(value).byteLength;
+}
+
+// ── Embedding budget ────────────────────────────────────────────────────────
+// The built-in gte-small model runs inside the Edge Function worker, and hosted
+// Supabase gives a worker about 2 seconds of CPU before it is killed and the
+// caller gets HTTP 546. A worker serves several requests and stops taking new
+// ones at a lower "soft" limit, so a request can arrive with only part of the 2
+// seconds left. Measured against a hosted project (2026-10), full 1,800-character
+// chunks embedded in one request, repeated back to back:
+//
+//     1 chunk   0 of 12 failed        4 chunks  2 of 14 failed
+//     2 chunks  0 of 12 failed        5 chunks  2 of 14 failed
+//     3 chunks  1 of 14 failed        7 chunks  always failed
+//
+// So one request embeds at most two chunks by default. A longer text is
+// represented by two evenly spaced windows; Postgres full-text search still
+// indexes every word of it, and that is what finds most memories anyway (see
+// migration 0013). A 546 is safe to retry — the next request gets a fresh
+// worker — and the bundled client does. Self-hosted runtimes without the CPU cap
+// can raise the budget with MEMORY_EMBED_CHARS_PER_REQUEST.
+export const EMBED_CHUNK_CHARS = 1_800;
+export const DEFAULT_EMBED_CHARS_PER_REQUEST = 3_600;
+export const MIN_EMBED_CHARS_PER_REQUEST = EMBED_CHUNK_CHARS;
+export const MAX_EMBED_CHARS_PER_REQUEST = 1_000_000;
+// One text is represented by at most this many averaged chunks, whatever the budget.
+export const MAX_CHUNKS_PER_TEXT = 8;
+
+/** The per-request embedding budget in characters, from MEMORY_EMBED_CHARS_PER_REQUEST. */
+export function embedCharBudget(raw: string | null | undefined) {
+  const value = Number(raw);
+  if (raw === null || raw === undefined || raw.trim() === '' || !Number.isFinite(value)) {
+    return DEFAULT_EMBED_CHARS_PER_REQUEST;
+  }
+  return Math.trunc(Math.max(MIN_EMBED_CHARS_PER_REQUEST, Math.min(MAX_EMBED_CHARS_PER_REQUEST, value)));
+}
+
+/** How many chunks one text may be averaged from under a given budget. */
+export function chunksPerText(budgetChars: number) {
+  return Math.max(1, Math.min(MAX_CHUNKS_PER_TEXT, Math.floor(budgetChars / EMBED_CHUNK_CHARS)));
+}
+
+/** Characters the model will actually read for this text: the cost charged to the budget. */
+export function embeddingCost(text: string, maxChunks: number) {
+  return chunkEmbeddingText(text, EMBED_CHUNK_CHARS, maxChunks).reduce((sum, chunk) => sum + chunk.length, 0);
+}
+
+/** An optional operator cap on memory content, in UTF-8 bytes (MEMORY_MAX_CONTENT_BYTES). */
+export function contentByteLimit(raw: string | null | undefined) {
+  if (raw === null || raw === undefined || raw.trim() === '') return null;
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return null;
+  return Math.trunc(Math.max(256, Math.min(400_000, value)));
+}
+
+// ── Supabase server key ─────────────────────────────────────────────────────
+// Supabase is retiring the JWT `service_role` key (end of 2026). The Edge
+// runtime now injects the replacement secret keys as SUPABASE_SECRET_KEYS, a
+// JSON dictionary keyed by key name; SUPABASE_SERVICE_ROLE_KEY still exists but
+// carries the legacy key. Prefer the new key when the runtime provides it, so a
+// project keeps working after its legacy keys are disabled.
+export type ServerKey = { key: string; source: 'secret_keys' | 'service_role' };
+
+export function resolveSupabaseServerKey(env: {
+  secretKeys?: string | null;
+  keyName?: string | null;
+  serviceRoleKey?: string | null;
+}): ServerKey | null {
+  const name = env.keyName?.trim() || 'default';
+  if (env.secretKeys) {
+    try {
+      const parsed: unknown = JSON.parse(env.secretKeys);
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+        const candidate = (parsed as Record<string, unknown>)[name];
+        if (typeof candidate === 'string' && candidate.trim()) {
+          return { key: candidate.trim(), source: 'secret_keys' };
+        }
+      }
+    } catch {
+      // Not JSON: fall through to the legacy variable rather than guess.
+    }
+  }
+  const legacy = env.serviceRoleKey?.trim();
+  return legacy ? { key: legacy, source: 'service_role' } : null;
+}
+
 export type Permission =
   | '*'
   | 'memory:read'
@@ -87,6 +183,7 @@ export function chunkEmbeddingText(text: string, maxChars = 1_800, maxChunks = 8
   }
 
   if (chunks.length <= maxChunks) return chunks;
+  if (maxChunks <= 1) return [chunks[0]];
   const selected = new Set<number>();
   for (let i = 0; i < maxChunks; i += 1) {
     selected.add(Math.round(i * (chunks.length - 1) / (maxChunks - 1)));
@@ -140,7 +237,8 @@ export function containsLikelySecret(value: string) {
 
     // Supabase — including this deployment's own credentials
     /\bsbp_[a-f0-9]{40,}\b/, // Supabase personal access token
-    /\bsb(?:p|s)_[A-Za-z0-9_-]{30,}\b/, // Supabase publishable/secret keys
+    /\bsb(?:p|s)_[A-Za-z0-9_-]{30,}\b/, // Supabase sbp_/sbs_ prefixed tokens
+    /\bsb_secret_[A-Za-z0-9_-]{16,}\b/, // Supabase secret API key (publishable keys are public by design)
     /\bamf_[A-Za-z0-9_-]{40,}\b/, // Ai-Memory-Free scoped client token
 
     // Nostr / Buzz identity

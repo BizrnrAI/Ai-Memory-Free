@@ -1,16 +1,16 @@
-export const RELEASE_VERSION = '1.3.0';
+export const RELEASE_VERSION = '1.4.0';
 export const PROTOCOL_VERSION = '1';
 export const PORTABLE_FORMAT = 'ai-memory-free-portable';
 export const PORTABLE_VERSION = 1;
 
 export const CORE_ACTIONS = [
-  'health', 'whoami', 'remember', 'remember_batch', 'recall', 'context',
+  'health', 'whoami', 'remember', 'remember_batch', 'recall', 'list', 'context',
   'retire', 'supersede', 'portable_export', 'portable_import',
 ] as const;
 
 export const MODULES = [
   {
-    id: 'core', version: '1.2.0', optional: false,
+    id: 'core', version: '1.3.0', optional: false,
     actions: CORE_ACTIONS,
   },
   {
@@ -30,15 +30,15 @@ export const MODULES = [
     actions: ['link_create', 'link_list', 'link_resolve'],
   },
   {
-    id: 'documents', version: '1.1.0', optional: true,
+    id: 'documents', version: '1.2.0', optional: true,
     actions: ['document_ingest', 'document_search', 'document_list', 'document_retire'],
   },
   {
-    id: 'maintenance', version: '1.0.0', optional: true,
+    id: 'maintenance', version: '1.1.0', optional: true,
     actions: ['maintenance_status', 'embedding_reindex'],
   },
   {
-    id: 'remote-mcp', version: '1.0.0', optional: true,
+    id: 'remote-mcp', version: '1.1.0', optional: true,
     actions: [],
   },
 ] as const;

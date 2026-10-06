@@ -1,8 +1,13 @@
 import { isOAuthIdentity } from './lib.ts';
+import { RELEASE_VERSION } from '../memory/protocol.ts';
 
 const MEMORY_API_URL = Deno.env.get('MEMORY_API_URL');
 const AUTHORIZATION_SERVER = Deno.env.get('MCP_AUTHORIZATION_SERVER');
 const RESOURCE_URL = Deno.env.get('MCP_RESOURCE_URL');
+// This endpoint speaks the handshake-based protocol. The 2026-07-28 revision
+// (stateless requests, `server/discover`) is not implemented here yet; clients
+// built for it fall back to this handshake. The local stdio adapter, which uses
+// the official SDK, speaks both.
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 
 type JsonRpcRequest = {
@@ -25,6 +30,10 @@ const tools = [
   })),
   tool('memory_recall', 'Recall ranked evidence from one namespace.', objectSchema(['query'], {
     query: stringSchema(), namespace: stringSchema(), limit: numberSchema(), pool: numberSchema(), track: booleanSchema(),
+  })),
+  tool('memory_list', 'Read a namespace in a fixed order, a page at a time; follow next_offset until it is null.', objectSchema([], {
+    namespace: stringSchema(), kinds: arraySchema(stringSchema()), tags: arraySchema(stringSchema()), order: stringSchema(),
+    limit: numberSchema(), offset: numberSchema(), max_chars: numberSchema(), include_retired: booleanSchema(),
   })),
   tool('memory_context', 'Build a deterministic, budgeted context bundle across authorized namespaces.', objectSchema(['query'], {
     query: stringSchema(), namespaces: arraySchema(stringSchema()), max_chars: numberSchema(),
@@ -115,12 +124,14 @@ Deno.serve(async (request) => {
       return jsonRpcResult(rpc.id ?? null, {
         protocolVersion: MCP_PROTOCOL_VERSION,
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: 'ai-memory-free-remote', version: '1.3.0' },
+        serverInfo: { name: 'ai-memory-free-remote', version: RELEASE_VERSION },
       });
     }
     return jsonRpcResult(rpc.id ?? null, { tools });
   }
 
+  // The handshake protocol requires a prompt, empty reply to a ping.
+  if (rpc.method === 'ping') return jsonRpcResult(rpc.id ?? null, {});
   if (rpc.method !== 'tools/call') return jsonRpcError(rpc.id ?? null, -32601, 'Method not found');
   const name = typeof rpc.params?.name === 'string' ? rpc.params.name : '';
   const action = toolActions[name];

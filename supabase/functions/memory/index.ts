@@ -1,13 +1,23 @@
 import { createClient } from '@supabase/supabase-js';
 import {
   bearerToken,
+  chunksPerText,
   containsLikelySecret,
+  contentByteLimit,
+  embedCharBudget,
+  EMBED_CHUNK_CHARS,
+  embeddingCost,
   hasPermission,
+  isMemoryKind,
+  MEMORY_KINDS,
   namespaceAllowed,
   readJsonBody,
   RequestInputError,
+  resolveSupabaseServerKey,
   sha256Hex,
   timingSafeEqualHex,
+  utf8ByteLength,
+  type MemoryKind,
   type Permission,
 } from './lib.ts';
 import { createGteSmallAdapter, GTE_SMALL_PROFILE } from './embedding.ts';
@@ -33,8 +43,6 @@ declare const Supabase: {
     };
   };
 };
-
-type MemoryKind = 'note' | 'fact' | 'decision' | 'correction' | 'reference' | 'procedure';
 
 type RequestBody = {
   protocol_version?: string;
@@ -94,6 +102,9 @@ type RequestBody = {
   offset?: number;
   records?: Record<string, unknown>[];
   profile?: string;
+  target?: string;
+  kinds?: string[];
+  order?: string;
 };
 
 type Caller = {
@@ -111,10 +122,16 @@ type RequestContext = {
   request: Request;
   requestId: string;
   caller: Caller;
+  // Characters this request may still hand to the embedding model (see lib.ts).
+  embedCharsLeft: number;
 };
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL');
-const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+const serverKey = resolveSupabaseServerKey({
+  secretKeys: Deno.env.get('SUPABASE_SECRET_KEYS'),
+  keyName: Deno.env.get('MEMORY_SUPABASE_SECRET_KEY_NAME'),
+  serviceRoleKey: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
+});
 const bootstrapToken = Deno.env.get('MEMORY_TOKEN');
 const rejectLikelySecrets = Deno.env.get('MEMORY_REJECT_LIKELY_SECRETS') !== 'false';
 const auditReads = Deno.env.get('MEMORY_AUDIT_READS') === 'true';
@@ -123,11 +140,21 @@ const allowedOrigins = (Deno.env.get('MEMORY_ALLOWED_ORIGINS') ?? '')
   .map((origin) => origin.trim())
   .filter(Boolean);
 
-const db = createClient(supabaseUrl ?? '', serviceRoleKey ?? '', {
+const MAX_CONTENT_CHARS = 100_000;
+// Optional operator cap in UTF-8 bytes; unset means only the character limit applies.
+const maxContentBytes = contentByteLimit(Deno.env.get('MEMORY_MAX_CONTENT_BYTES'));
+const embedCharsPerRequest = embedCharBudget(Deno.env.get('MEMORY_EMBED_CHARS_PER_REQUEST'));
+const embedChunksPerText = chunksPerText(embedCharsPerRequest);
+// MEMORY_EMBEDDINGS=off runs the service on full-text search alone: nothing is
+// embedded, so no request can hit the CPU limit, at the cost of the matches only
+// embeddings find (questions worded differently from the memory).
+const embeddingsEnabled = (Deno.env.get('MEMORY_EMBEDDINGS') ?? 'on').trim().toLowerCase() !== 'off';
+
+const db = createClient(supabaseUrl ?? '', serverKey?.key ?? '', {
   auth: { persistSession: false },
 });
 const model = new Supabase.ai.Session('gte-small');
-const embeddingAdapter = createGteSmallAdapter(model);
+const embeddingAdapter = createGteSmallAdapter(model, embedChunksPerText);
 type ActionHandler = (context: RequestContext, input: RequestBody) => Response | Promise<Response>;
 const actionHandlers: Record<string, ActionHandler> = {
   health: (context) => handleHealth(context),
@@ -135,6 +162,7 @@ const actionHandlers: Record<string, ActionHandler> = {
   remember: handleRemember,
   remember_batch: handleRememberBatch,
   recall: handleRecall,
+  list: handleList,
   context: handleContext,
   retire: handleRetire,
   supersede: handleSupersede,
@@ -169,7 +197,7 @@ Deno.serve(async (request) => {
   if (request.method !== 'POST') {
     return json({ ok: false, error: 'method_not_allowed' }, 405, request);
   }
-  if (!supabaseUrl || !serviceRoleKey) {
+  if (!supabaseUrl || !serverKey) {
     return json({ ok: false, error: 'server_not_configured' }, 500, request);
   }
   if (!originAllowed(request)) {
@@ -179,7 +207,12 @@ Deno.serve(async (request) => {
   const caller = await authenticate(request.headers.get('authorization'));
   if (!caller) return json({ ok: false, error: 'unauthorized' }, 401, request);
 
-  const context: RequestContext = { request, requestId: crypto.randomUUID(), caller };
+  const context: RequestContext = {
+    request,
+    requestId: crypto.randomUUID(),
+    caller,
+    embedCharsLeft: embedCharsPerRequest,
+  };
   let body: RequestBody;
   try {
     body = await readJsonBody<RequestBody>(request);
@@ -206,7 +239,7 @@ Deno.serve(async (request) => {
   } catch (error) {
     if (error instanceof ApiError) {
       await audit(context, action, body.namespace, undefined, false, { error: error.code });
-      return json({ ok: false, error: error.code }, error.status, request);
+      return json({ ok: false, error: error.code, ...error.details }, error.status, request);
     }
     console.error('[ai-memory-free] request failed', {
       request_id: context.requestId,
@@ -225,14 +258,31 @@ function handleHealth(context: RequestContext) {
     version: RELEASE_VERSION,
     protocol_version: PROTOCOL_VERSION,
     portable_format_version: PORTABLE_VERSION,
+    embeddings: embeddingsEnabled ? 'on' : 'off',
     embedding_profile: GTE_SMALL_PROFILE.id,
     embedding_model: GTE_SMALL_PROFILE.model,
     embedding_dimensions: GTE_SMALL_PROFILE.dimensions,
     embedding_strategy: GTE_SMALL_PROFILE.strategy,
     auth_mode: context.caller.authMode,
+    // What one request can carry, so any caller can size its writes without trial and error.
+    limits: serviceLimits(),
+    server_key: serverKey?.source ?? null,
     actions: ACTIONS,
     modules: MODULES,
   }, 200, context.request);
+}
+
+function serviceLimits() {
+  return {
+    max_content_chars: MAX_CONTENT_CHARS,
+    max_content_bytes: maxContentBytes,
+    embed_chars_per_request: embeddingsEnabled ? embedCharsPerRequest : null,
+    embed_chunk_chars: EMBED_CHUNK_CHARS,
+    embed_chunks_per_text: embeddingsEnabled ? embedChunksPerText : 0,
+    remember_batch_items: 50,
+    portable_import_records: 20,
+    document_chunks: 64,
+  };
 }
 
 function handleWhoAmI(context: RequestContext) {
@@ -260,13 +310,19 @@ async function handleRememberBatch(context: RequestContext, input: RequestBody) 
   if (!Array.isArray(input.items) || input.items.length < 1 || input.items.length > 50) {
     throw new ApiError('items_must_contain_1_to_50_records', 400);
   }
+  // Fail before anything is written when the batch cannot be embedded in one
+  // request; a half-written batch would be worse than a clear refusal.
+  requireEmbedBudget(context, input.items.map((item) => memoryContent(item.content)));
   const results = [];
-  for (const item of input.items) results.push(await rememberOne(context, item));
+  // An item without its own namespace takes the batch's, not "default".
+  for (const item of input.items) {
+    results.push(await rememberOne(context, { ...item, namespace: item.namespace ?? input.namespace }));
+  }
   return json({ ok: true, results }, 200, context.request);
 }
 
 async function rememberOne(context: RequestContext, input: RequestBody) {
-  const content = requiredString(input.content, 'content', 1, 100_000);
+  const content = memoryContent(input.content);
   const namespace = cleanNamespace(input.namespace);
   requireAccess(context.caller, 'memory:write', namespace);
 
@@ -280,12 +336,13 @@ async function rememberOne(context: RequestContext, input: RequestBody) {
     throw new ApiError('source_system_and_external_id_required_together', 400);
   }
   assertNoSecretMaterial({ content, source, tags, metadata });
-  const embedding = await embed(content);
+  const kind = cleanKind(input.kind);
+  const embedding = await embed(context, content);
   const contentHash = await sha256Hex(content);
   const payload = {
     namespace,
     content,
-    kind: cleanKind(input.kind),
+    kind,
     importance,
     base_importance: importance,
     source,
@@ -304,15 +361,44 @@ async function rememberOne(context: RequestContext, input: RequestBody) {
 
   if (error?.code === '23505') {
     created = false;
-    let existingQuery = db.from('memories')
-      .select('id, namespace, content_hash, created_at, updated_at')
-      .eq('namespace', namespace);
-    existingQuery = sourceSystem && externalId
-      ? existingQuery.eq('source_system', sourceSystem).eq('external_id', externalId)
-      : existingQuery.eq('content_hash', contentHash);
-    const existing = await existingQuery.single();
-    data = existing.data;
-    error = existing.error;
+    // Two different unique rules can refuse the insert: the caller's
+    // (source_system, external_id) key, or the content hash. Work out which.
+    if (sourceSystem && externalId) {
+      const keyed = await db.from('memories')
+        .select('id, namespace, content_hash, created_at, updated_at')
+        .eq('namespace', namespace)
+        .eq('source_system', sourceSystem)
+        .eq('external_id', externalId)
+        .maybeSingle();
+      if (keyed.error) throw new ApiError('memory_write_failed', 500);
+      if (keyed.data) {
+        // The key is an idempotency key, not an update address: the same key
+        // with different content is a conflict, never a silent no-op.
+        if (keyed.data.content_hash !== contentHash) {
+          throw new ApiError('external_id_content_conflict', 409, { memory_id: keyed.data.id });
+        }
+        data = keyed.data;
+        error = null;
+      } else {
+        const duplicate = await db.from('memories')
+          .select('id')
+          .eq('namespace', namespace)
+          .eq('content_hash', contentHash)
+          .maybeSingle();
+        if (duplicate.error) throw new ApiError('memory_write_failed', 500);
+        if (duplicate.data) {
+          throw new ApiError('content_already_exists', 409, { memory_id: duplicate.data.id });
+        }
+      }
+    } else {
+      const existing = await db.from('memories')
+        .select('id, namespace, content_hash, created_at, updated_at')
+        .eq('namespace', namespace)
+        .eq('content_hash', contentHash)
+        .single();
+      data = existing.data;
+      error = existing.error;
+    }
   }
   if (error || !data) throw new ApiError('memory_write_failed', 500);
 
@@ -323,7 +409,7 @@ async function rememberOne(context: RequestContext, input: RequestBody) {
     if (supersede.error) throw new ApiError('memory_supersede_failed', 409);
   }
 
-  const profileWrite = await db.from('memory_embeddings').upsert({
+  const profileWrite = embedding === null ? { error: null } : await db.from('memory_embeddings').upsert({
     memory_id: data.id,
     profile: embeddingAdapter.profile.id,
     model: embeddingAdapter.profile.model,
@@ -346,7 +432,7 @@ async function handleRecall(context: RequestContext, input: RequestBody) {
   requireAccess(context.caller, 'memory:read', namespace);
   const limit = Math.trunc(clampNumber(input.limit ?? 8, 1, 50));
   const pool = Math.trunc(clampNumber(input.pool ?? 200, 10, 1000));
-  const embedding = await embed(query);
+  const embedding = await embed(context, query);
 
   const { data, error } = await db.rpc('recall', {
     query_embedding: embedding,
@@ -366,6 +452,45 @@ async function handleRecall(context: RequestContext, input: RequestBody) {
   return json({ ok: true, results: data ?? [] }, 200, context.request);
 }
 
+// The whole of a namespace, in a fixed order, a budget-sized page at a time.
+// Search answers "which memories are about this?"; this answers "what does this
+// project know?". For a namespace that fits in a model's context — most do —
+// reading it whole is the only recall with nothing to miss, and it costs no
+// embedding. Read-only: it does not count as access for ranking.
+async function handleList(context: RequestContext, input: RequestBody) {
+  const namespace = cleanNamespace(input.namespace);
+  requireAccess(context.caller, 'memory:read', namespace);
+  const limit = Math.trunc(clampNumber(input.limit ?? 50, 1, 200));
+  const offset = Math.trunc(clampNumber(input.offset ?? 0, 0, 1_000_000));
+  const maxChars = Math.trunc(clampNumber(input.max_chars ?? 20_000, 1_000, 200_000));
+  const order = cleanEnum(input.order, ['importance', 'recent'], 'importance', 'order');
+  const kinds = Array.isArray(input.kinds) ? [...new Set(input.kinds.map(cleanKind))] : [];
+  const tags = Array.isArray(input.tags) ? [...new Set(input.tags.map(cleanTag).filter(Boolean))].slice(0, 64) : [];
+
+  let query = db.from('memories')
+    .select('id, namespace, content, kind, source, tags, metadata, source_system, external_id, base_importance, access_count, is_active, superseded_by, created_at, updated_at, last_accessed_at')
+    .eq('namespace', namespace);
+  if (!input.include_retired) query = query.eq('is_active', true).is('superseded_by', null);
+  if (kinds.length > 0) query = query.in('kind', kinds);
+  if (tags.length > 0) query = query.overlaps('tags', tags);
+  if (order === 'importance') query = query.order('base_importance', { ascending: false });
+  query = query.order('updated_at', { ascending: false }).order('id', { ascending: true }).range(offset, offset + limit);
+  const { data, error } = await query;
+  if (error) throw new ApiError('memory_list_failed', 500);
+
+  const rows = data ?? [];
+  const page = boundContext(rows.slice(0, limit), maxChars);
+  const more = rows.length > limit || page.truncated;
+  return json({
+    ok: true,
+    namespace,
+    order,
+    memories: page.rows,
+    next_offset: more ? offset + page.rows.length : null,
+    budget: { max_chars: maxChars, used_chars: page.usedChars, truncated: page.truncated },
+  }, 200, context.request);
+}
+
 async function handleContext(context: RequestContext, input: RequestBody) {
   const query = requiredString(input.query, 'query', 1, 20_000);
   const namespaces = cleanNamespaces(input.namespaces ?? (input.namespace ? [input.namespace] : ['default']));
@@ -377,7 +502,7 @@ async function handleContext(context: RequestContext, input: RequestBody) {
   } catch {
     throw new ApiError('invalid_context_budget', 400);
   }
-  const embedding = await embed(query);
+  const embedding = await embed(context, query);
   const recalled = await Promise.all(namespaces.map(async (namespace) => {
     const { data, error } = await db.rpc('recall', {
       query_embedding: embedding,
@@ -593,7 +718,7 @@ async function ingestDocument(context: RequestContext, input: RequestBody) {
   const namespace = cleanNamespace(input.namespace);
   requireAccess(context.caller, 'memory:write', namespace);
   const title = requiredString(input.title, 'title', 1, 512);
-  const content = requiredString(input.content, 'content', 1, 100_000);
+  const content = requiredString(input.content, 'content', 1, MAX_CONTENT_CHARS);
   const metadata = isPlainObject(input.metadata) ? input.metadata : {};
   assertNoSecretMaterial({ title, content, source_uri: input.source_uri, metadata });
   const chunks = splitDocumentText(content);
@@ -610,37 +735,90 @@ async function ingestDocument(context: RequestContext, input: RequestBody) {
   };
   let document = await db.from('memory_documents').insert(row).select().single();
   let created = true;
+  let reactivated = false;
   if (document.error?.code === '23505') {
     created = false;
     const hash = await sha256Hex(content);
     document = await db.from('memory_documents').select().eq('namespace', namespace).eq('content_hash', hash).single();
+    // Ingesting a retired document again is the caller saying it is current: bring it back.
+    if (document.data && document.data.is_active === false) {
+      const revived = await db.from('memory_documents').update({ is_active: true }).eq('id', document.data.id).select().single();
+      if (revived.error || !revived.data) throw new ApiError('document_write_failed', 500);
+      document = revived;
+      reactivated = true;
+    }
   }
   if (document.error || !document.data) throw new ApiError('document_write_failed', 500);
-  if (!created) return { created, document: document.data, chunks_created: 0 };
+  const documentId = document.data.id;
 
-  const embeddings: number[][] = [];
-  for (const chunk of chunks) embeddings.push(await embed(chunk));
-  const chunkRows = chunks.map((chunk, index) => ({
-    document_id: document.data.id,
-    namespace,
-    chunk_index: index,
-    content: chunk,
-    embedding: embeddings[index],
-  }));
-  const chunkWrite = await db.from('memory_document_chunks').insert(chunkRows);
-  if (chunkWrite.error) {
-    await db.from('memory_documents').delete().eq('id', document.data.id);
-    throw new ApiError('document_chunk_write_failed', 500);
+  // One request can only embed so much (see the embedding budget in lib.ts), and
+  // a document is usually more than that. So: write every chunk first, without a
+  // vector — full-text search finds it at once — then embed as many as this
+  // request can afford. Sending the same document again embeds the next batch,
+  // until `chunks_pending` reaches 0. A request that dies halfway loses nothing.
+  let chunksCreated = 0;
+  const existingChunks = await db.from('memory_document_chunks')
+    .select('*', { count: 'exact', head: true }).eq('document_id', documentId);
+  if (existingChunks.error) throw new ApiError('document_chunk_write_failed', 500);
+  if ((existingChunks.count ?? 0) === 0) {
+    const chunkRows = chunks.map((chunk, index) => ({
+      document_id: documentId, namespace, chunk_index: index, content: chunk,
+    }));
+    const chunkWrite = await db.from('memory_document_chunks').insert(chunkRows);
+    if (chunkWrite.error) {
+      if (created) await db.from('memory_documents').delete().eq('id', documentId);
+      throw new ApiError('document_chunk_write_failed', 500);
+    }
+    chunksCreated = chunkRows.length;
   }
-  await audit(context, 'document_ingest', namespace, document.data.id, true, { chunks: chunks.length });
-  return { created, document: document.data, chunks_created: chunks.length };
+
+  const chunksEmbedded = await embedPendingChunks(context, (query) => query.eq('document_id', documentId));
+  const pending = await db.from('memory_document_chunks')
+    .select('*', { count: 'exact', head: true }).eq('document_id', documentId).is('embedding', null);
+  if (pending.error) throw new ApiError('document_chunk_write_failed', 500);
+  // With embeddings off nothing is waiting: the chunks are complete as they are.
+  const chunksPending = embeddingsEnabled ? pending.count ?? 0 : 0;
+
+  await audit(context, 'document_ingest', namespace, documentId, true, {
+    created, reactivated, chunks: chunksCreated, embedded: chunksEmbedded, pending: chunksPending,
+  });
+  return {
+    created,
+    reactivated,
+    document: document.data,
+    chunks_created: chunksCreated,
+    chunks_embedded: chunksEmbedded,
+    chunks_pending: chunksPending,
+  };
+}
+
+// Embeds chunks that have no vector yet, oldest first, until this request's
+// embedding budget is spent. Returns how many it embedded.
+// deno-lint-ignore no-explicit-any
+async function embedPendingChunks(context: RequestContext, scope: (query: any) => any) {
+  if (!embeddingsEnabled) return 0;
+  const batch = Math.max(1, Math.floor(context.embedCharsLeft / EMBED_CHUNK_CHARS));
+  const { data, error } = await scope(
+    db.from('memory_document_chunks').select('id, content').is('embedding', null),
+  ).order('document_id').order('chunk_index').limit(batch);
+  if (error) throw new ApiError('document_chunk_read_failed', 500);
+  let embedded = 0;
+  for (const chunk of (data ?? []) as { id: string; content: string }[]) {
+    if (embeddingCost(chunk.content, embedChunksPerText) > context.embedCharsLeft) break;
+    const embedding = await embed(context, chunk.content);
+    if (embedding === null) break;
+    const write = await db.from('memory_document_chunks').update({ embedding }).eq('id', chunk.id);
+    if (write.error) throw new ApiError('document_chunk_write_failed', 500);
+    embedded += 1;
+  }
+  return embedded;
 }
 
 async function handleDocumentSearch(context: RequestContext, input: RequestBody) {
   const namespace = cleanNamespace(input.namespace);
   requireAccess(context.caller, 'memory:read', namespace);
   const query = requiredString(input.query, 'query', 1, 20_000);
-  const embedding = await embed(query);
+  const embedding = await embed(context, query);
   const { data, error } = await db.rpc('recall_document_chunks', {
     query_embedding: embedding,
     query_text: query,
@@ -708,6 +886,12 @@ async function handleMaintenanceStatus(context: RequestContext, input: RequestBo
     .eq('namespace', namespace).eq('is_active', false);
   const unverified = await db.from('memory_sources').select('*', { count: 'exact', head: true })
     .eq('namespace', namespace).is('last_verified_at', null);
+  const pendingChunks = embeddingsEnabled
+    ? await db.from('memory_document_chunks').select('*', { count: 'exact', head: true })
+      .eq('namespace', namespace).is('embedding', null)
+    : { error: null, count: 0 };
+  const withoutVector = await db.from('memories').select('*', { count: 'exact', head: true })
+    .eq('namespace', namespace).eq('is_active', true).is('embedding', null);
   let databaseSizeBytes: number | null = null;
   if (hasPermission(context.caller.permissions, 'memory:admin')) {
     const size = await db.rpc('memory_database_size_bytes');
@@ -719,6 +903,9 @@ async function handleMaintenanceStatus(context: RequestContext, input: RequestBo
     counts,
     inactive_memories: inactive.error ? null : inactive.count,
     unverified_sources: unverified.error ? null : unverified.count,
+    document_chunks_pending_embedding: pendingChunks.error ? null : pendingChunks.count,
+    memories_without_vector: withoutVector.error ? null : withoutVector.count,
+    limits: serviceLimits(),
     database_size_bytes: databaseSizeBytes,
     embedding_profile: embeddingAdapter.profile,
     modules: MODULES,
@@ -730,13 +917,58 @@ async function handleEmbeddingReindex(context: RequestContext, input: RequestBod
   requireAccess(context.caller, 'memory:admin', namespace);
   const profile = input.profile ?? embeddingAdapter.profile.id;
   if (profile !== embeddingAdapter.profile.id) throw new ApiError('embedding_profile_not_available', 409);
+  const target = cleanEnum(input.target, ['memories', 'missing', 'document_chunks'], 'memories', 'target');
+  if (!embeddingsEnabled) throw new ApiError('embeddings_disabled', 409);
+
+  if (target === 'document_chunks') {
+    // Finishes documents whose chunks are still waiting for a vector. No cursor:
+    // an embedded chunk is no longer pending, so the caller repeats until 0 remain.
+    const processed = await embedPendingChunks(context, (query) => query.eq('namespace', namespace));
+    const remaining = await db.from('memory_document_chunks').select('*', { count: 'exact', head: true })
+      .eq('namespace', namespace).is('embedding', null);
+    if (remaining.error) throw new ApiError('embedding_reindex_read_failed', 500);
+    return json({ ok: true, profile, target, processed, remaining: remaining.count ?? 0 }, 200, context.request);
+  }
+
+  if (target === 'missing') {
+    // Memories stored without a vector (written while embeddings were off, or
+    // imported that way). Gives each one, so recall's vector list can find it.
+    const batch = Math.max(1, Math.floor(context.embedCharsLeft / EMBED_CHUNK_CHARS));
+    const pending = await db.from('memories').select('id, content')
+      .eq('namespace', namespace).eq('is_active', true).is('embedding', null).order('id').limit(batch);
+    if (pending.error) throw new ApiError('embedding_reindex_read_failed', 500);
+    let processed = 0;
+    for (const memory of pending.data ?? []) {
+      if (processed > 0 && embeddingCost(memory.content, embedChunksPerText) > context.embedCharsLeft) break;
+      const embedding = await embed(context, memory.content);
+      if (embedding === null) break;
+      const inline = await db.from('memories').update({ embedding }).eq('id', memory.id);
+      const profileRow = await db.from('memory_embeddings').upsert({
+        memory_id: memory.id, profile,
+        model: embeddingAdapter.profile.model, dimensions: embeddingAdapter.profile.dimensions,
+        strategy: embeddingAdapter.profile.strategy, embedding, is_active: true,
+      }, { onConflict: 'memory_id,profile' });
+      if (inline.error || profileRow.error) throw new ApiError('embedding_reindex_write_failed', 500);
+      processed += 1;
+    }
+    const remaining = await db.from('memories').select('*', { count: 'exact', head: true })
+      .eq('namespace', namespace).eq('is_active', true).is('embedding', null);
+    if (remaining.error) throw new ApiError('embedding_reindex_read_failed', 500);
+    return json({ ok: true, profile, target, processed, remaining: remaining.count ?? 0 }, 200, context.request);
+  }
+
   const limit = Math.trunc(clampNumber(input.limit ?? 25, 1, 50));
   const offset = Math.trunc(clampNumber(input.offset ?? 0, 0, 1_000_000));
   const { data, error } = await db.from('memories').select('id, content')
     .eq('namespace', namespace).eq('is_active', true).order('id').range(offset, offset + limit - 1);
   if (error) throw new ApiError('embedding_reindex_read_failed', 500);
+  // `limit` is an upper bound. The batch also stops when the embedding budget
+  // is spent, and `next_offset` says where to continue, so no call can overrun.
+  let processed = 0;
   for (const memory of data ?? []) {
-    const embedding = await embed(memory.content);
+    if (processed > 0 && embeddingCost(memory.content, embedChunksPerText) > context.embedCharsLeft) break;
+    const embedding = await embed(context, memory.content);
+    if (embedding === null) break;
     const write = await db.from('memory_embeddings').upsert({
       memory_id: memory.id,
       profile,
@@ -747,8 +979,14 @@ async function handleEmbeddingReindex(context: RequestContext, input: RequestBod
       is_active: true,
     }, { onConflict: 'memory_id,profile' });
     if (write.error) throw new ApiError('embedding_reindex_write_failed', 500);
+    processed += 1;
   }
-  return json({ ok: true, profile, processed: data?.length ?? 0, next_offset: offset + (data?.length ?? 0) }, 200, context.request);
+  const exhausted = (data?.length ?? 0) < limit && processed === (data?.length ?? 0);
+  return json({
+    ok: true, profile, target, processed,
+    next_offset: offset + processed,
+    done: exhausted,
+  }, 200, context.request);
 }
 
 async function handlePortableExport(context: RequestContext, input: RequestBody) {
@@ -809,6 +1047,10 @@ async function handlePortableImport(context: RequestContext, input: RequestBody)
   if (!Array.isArray(input.records) || input.records.length < 1 || input.records.length > 20) {
     throw new ApiError('records_must_contain_1_to_20_items', 400);
   }
+  if (input.resource === 'memories') {
+    // Refuse a page this request cannot embed before importing any of it.
+    requireEmbedBudget(context, input.records.map((record) => requiredString(record.content, 'content', 1, MAX_CONTENT_CHARS)));
+  }
   let imported = 0;
   let skipped = 0;
   for (const record of input.records) {
@@ -829,8 +1071,8 @@ async function importPortableRecord(
 ) {
   assertNoSecretMaterial(record);
   if (resource === 'memories') {
-    const content = requiredString(record.content, 'content', 1, 100_000);
-    const embedding = await embed(content);
+    const content = requiredString(record.content, 'content', 1, MAX_CONTENT_CHARS);
+    const embedding = await embed(context, content);
     const row = {
       id: optionalUuid(record.id),
       namespace,
@@ -850,7 +1092,7 @@ async function importPortableRecord(
     const result = await db.from('memories').insert(row).select('id').single();
     if (result.error?.code === '23505') return false;
     if (result.error || !result.data) throw new ApiError('portable_import_memory_failed', 500);
-    const profile = await db.from('memory_embeddings').upsert({
+    const profile = embedding === null ? { error: null } : await db.from('memory_embeddings').upsert({
       memory_id: result.data.id,
       profile: embeddingAdapter.profile.id,
       model: embeddingAdapter.profile.model,
@@ -1131,8 +1373,44 @@ async function authenticate(header: string | null): Promise<Caller | null> {
   };
 }
 
-async function embed(text: string) {
+// Every embedding goes through here so one request never asks the model for
+// more than its budget. A single text always fits: it is sampled down to
+// `embedChunksPerText` chunks. Several texts in one request may not.
+// Returns null when embeddings are switched off; every caller stores or passes
+// that null, and the search functions skip their vector list for it.
+async function embed(context: RequestContext, text: string): Promise<number[] | null> {
+  if (!embeddingsEnabled) return null;
+  const cost = embeddingCost(text, embedChunksPerText);
+  if (cost > context.embedCharsLeft) throw embedBudgetError(cost);
+  context.embedCharsLeft -= cost;
   return await embeddingAdapter.embed(text);
+}
+
+function requireEmbedBudget(context: RequestContext, texts: string[]) {
+  if (!embeddingsEnabled) return;
+  const cost = texts.reduce((sum, text) => sum + embeddingCost(text, embedChunksPerText), 0);
+  if (cost > context.embedCharsLeft) throw embedBudgetError(cost);
+}
+
+function embedBudgetError(cost: number) {
+  return new ApiError('embedding_budget_exceeded', 413, {
+    embed_chars: cost,
+    max_embed_chars: embedCharsPerRequest,
+  });
+}
+
+function memoryContent(value: unknown) {
+  const content = requiredString(value, 'content', 1, MAX_CONTENT_CHARS);
+  if (maxContentBytes !== null) {
+    const contentBytes = utf8ByteLength(content);
+    if (contentBytes > maxContentBytes) {
+      throw new ApiError('content_too_large', 413, {
+        max_content_bytes: maxContentBytes,
+        content_bytes: contentBytes,
+      });
+    }
+  }
+  return content;
 }
 
 async function requireMemory(caller: Caller, id: string, permission: Permission) {
@@ -1281,9 +1559,10 @@ function cleanEnum<T extends string>(
 }
 
 function cleanKind(value: unknown): MemoryKind {
-  const allowed = new Set(['note', 'fact', 'decision', 'correction', 'reference', 'procedure']);
-  if (typeof value === 'string' && allowed.has(value)) return value as MemoryKind;
-  return 'note';
+  if (value === undefined || value === null || value === '') return 'note';
+  // An unknown kind is a caller mistake; storing it as a note would hide it.
+  if (!isMemoryKind(value)) throw new ApiError('invalid_kind', 400, { allowed_kinds: MEMORY_KINDS });
+  return value;
 }
 
 function cleanTag(value: unknown) {
@@ -1339,7 +1618,13 @@ function assertNoSecretMaterial(value: unknown) {
 }
 
 class ApiError extends Error {
-  constructor(public readonly code: string, public readonly status: number) {
+  // `details` are safe, machine-readable facts returned beside the error code
+  // (limits, the id of a conflicting row). Never put content or secrets here.
+  constructor(
+    public readonly code: string,
+    public readonly status: number,
+    public readonly details: Record<string, unknown> = {},
+  ) {
     super(code);
   }
 }
