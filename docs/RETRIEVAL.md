@@ -13,6 +13,11 @@ choose between its modes. Measurements are from 2026-10.
 - **`recall`** ranks. Use it to find one thing in a namespace too large to read,
   or to check whether something is already known before writing it.
 
+One operational consequence: reading with `list` does not count as "use". If the
+optional maintenance jobs are installed, memory that is only ever read this way
+is retired after about 90 days. Remove the jobs for durable project memory — see
+[OPERATIONS.md](OPERATIONS.md#optional-memory-maintenance).
+
 ## How Recall Ranks
 
 `recall` builds three ranked lists and fuses them with Reciprocal Rank Fusion:
@@ -98,12 +103,22 @@ request, repeated back to back:
 So one request embeds at most two chunks — 3,600 characters — by default
 (`MEMORY_EMBED_CHARS_PER_REQUEST`).
 
-Length is not the whole cost. Every run of the model has a fixed price before it
-reads a word, so many short texts cost far more than one long one: in a local
-run, a batch of thirty 40-character memories killed the worker at the
-twenty-fourth. The budget therefore charges each chunk its characters plus a
-fixed 600, and a request may spend 4,800 — two full chunks. That is about seven
-one-line memories, or three of typical length, per request.
+Length is not the whole cost. Every text embedded has a fixed price before the
+model reads a word, so many short texts cost far more than one long one.
+Measured on a hosted project with the budget lifted, one request to a fresh
+worker stored:
+
+| Memories in one request | Result |
+| --- | --- |
+| 12 one-line memories | stored |
+| 16 one-line memories | HTTP 546, every time |
+| 10 of 760 characters | stored |
+| 5 of 1,790 characters | stored |
+
+Those fit a fixed price of about 1,200 characters per text. The budget therefore
+charges each chunk its characters plus 1,200, and a request may spend 6,000 —
+two full chunks, about a third of what a fresh worker can do. That is four
+one-line memories, three of typical length, or two long ones per request.
 
 What follows from that:
 

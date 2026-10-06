@@ -610,10 +610,10 @@ export function packByEmbedBudget<T>(
   maxItems: number,
 ): T[][] {
   // A service older than 1.4.0 reports no limits; assume the hosted defaults.
-  const budget = limits ? limits.embed_cost_per_request : 4_800;
+  const budget = limits ? limits.embed_cost_per_request : 6_000;
   const chunkChars = limits?.embed_chunk_chars ?? 1_800;
   const chunksPerText = limits?.embed_chunks_per_text ?? 2;
-  const perRun = limits?.embed_cost_per_run ?? 600;
+  const perRun = limits?.embed_cost_per_run ?? 1_200;
   const costOf = (text: string) => {
     const length = text.trim().length;
     const chunks = Math.max(1, Math.min(chunksPerText, Math.ceil(length / chunkChars)));

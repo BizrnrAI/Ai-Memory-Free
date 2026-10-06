@@ -32,16 +32,19 @@ export function utf8ByteLength(value: string) {
 // worker — and the bundled client does. Self-hosted runtimes without the CPU cap
 // can raise the budget with MEMORY_EMBED_CHARS_PER_REQUEST.
 //
-// Characters are not the whole cost. Every run of the model has a fixed price
-// before it reads a word, so thirty one-line memories are far dearer than one
-// memory thirty lines long: in a local run, a batch of thirty 40-character
-// texts killed the worker at the twenty-fourth. Cost is therefore counted per
-// chunk as its characters plus EMBED_RUN_OVERHEAD, set on the high side of what
-// was measured, and a request may spend what two full chunks cost.
+// Characters are not the whole cost. Every text embedded has a fixed price
+// before the model reads a word — the run itself, and the lookups and writes
+// around it — so many one-line memories are far dearer than one long memory.
+// Measured on a hosted project with the budget lifted, a fresh worker stored
+// twelve one-line memories in one request and never sixteen; it stored ten of
+// 760 characters, and five of 1,790. Those fit a price of about 1,200
+// characters per run. Cost is therefore counted per chunk as its characters
+// plus EMBED_RUN_OVERHEAD, and a request may spend what two full chunks cost —
+// about a third of what a fresh worker can do, whatever the size of the texts.
 export const EMBED_CHUNK_CHARS = 1_800;
 // What one run of the model costs before it reads any text, in the same unit as
 // a character of text.
-export const EMBED_RUN_OVERHEAD = 600;
+export const EMBED_RUN_OVERHEAD = 1_200;
 export const DEFAULT_EMBED_CHARS_PER_REQUEST = 3_600;
 export const MIN_EMBED_CHARS_PER_REQUEST = EMBED_CHUNK_CHARS;
 export const MAX_EMBED_CHARS_PER_REQUEST = 1_000_000;

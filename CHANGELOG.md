@@ -83,6 +83,12 @@ handling.
   4.23.15, `@types/node` 24.19.1, `@supabase/supabase-js` 2.117.2;
   `actions/setup-node` v7
 
+### Documentation
+
+- the optional maintenance jobs (`0002`) retire any memory never recalled with
+  tracking after about 90 days, and `list`, `context` and untracked recalls do
+  not count; OPERATIONS and RETRIEVAL now say so and show how to remove the jobs
+
 ### Fixed
 
 - a duplicate or retried `remember` (and a re-sent import page) embedded the

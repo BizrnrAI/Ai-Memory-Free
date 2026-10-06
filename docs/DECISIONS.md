@@ -197,10 +197,12 @@ always safe. The eight-chunk design could not store any memory above roughly
 10,000 characters on the platform the project targets.
 
 Characters alone understate the cost: every run of the model has a fixed price,
-and a batch of thirty one-line memories killed a local worker at the
-twenty-fourth. The budget charges each chunk its characters plus a fixed 600 —
-set on the high side of what was observed — so short texts are limited by
-number. A stored memory is recognised before it is embedded, so a retry spends
+and many short texts cost more than one long one. Measured on a hosted project
+with the budget lifted, a fresh worker stored twelve one-line memories in one
+request and never sixteen, ten of 760 characters, and five of 1,790. The budget
+charges each chunk its characters plus a fixed 1,200, which fits those three
+measurements, so a request spends about a third of what a fresh worker can do
+whatever the size of its texts. A stored memory is recognised before it is embedded, so a retry spends
 nothing.
 
 ## 2026-10-06 - Recall Fuses Three Lists, And Embeddings Are Optional

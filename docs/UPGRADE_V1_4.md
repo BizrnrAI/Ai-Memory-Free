@@ -43,7 +43,7 @@ untouched; nothing needs re-embedding.
 - **`remember_batch` and `portable_import` can answer 413**
   (`embedding_budget_exceeded`, with `embed_cost` and `max_embed_cost`) when a
   batch is too large to embed in one request. Short items count too: about
-  seven one-line memories fit. On hosted Supabase those batches already failed, with an HTTP 546 and
+  four one-line memories fit. On hosted Supabase those batches already failed, with an HTTP 546 and
   no explanation. Split the batch, or use the client's `rememberMany` and
   `npm run portable`, which size their requests from `health`.
 - **Batch items without a `namespace` go to the batch's `namespace`**, not

@@ -114,7 +114,7 @@ Every item must be an object (`400 items_must_be_objects`). The whole batch must
 fit the request's embedding budget. If it does not, nothing is written and the
 call fails with `413 embedding_budget_exceeded`, carrying `embed_cost` (what the
 batch needs) and `max_embed_cost`. Split the batch; one item always fits on its
-own. Short items are limited by number, not length — about seven one-line
+own. Short items are limited by number, not length — about four one-line
 memories fit in a default request — because each is a separate run of the
 model. The TypeScript client's `rememberMany` does the splitting.
 
@@ -395,9 +395,9 @@ One request can only do so much. Hosted Supabase ends a worker that uses about
 built-in embedding model is what uses that CPU, so the service budgets it:
 
 - every chunk the model reads costs its characters plus a fixed
-  `limits.embed_cost_per_run` (600), because each run of the model has a price
+  `limits.embed_cost_per_run` (1,200), because each run of the model has a price
   before it reads a word
-- one request may spend `limits.embed_cost_per_request` (default 4,800: two
+- one request may spend `limits.embed_cost_per_request` (default 6,000: two
   full 1,800-character chunks, the most that never failed in measurement)
 - one text is embedded from at most `limits.embed_chunks_per_text` windows of
   `limits.embed_chunk_chars` characters, so a single `remember`, `recall` or

@@ -246,6 +246,29 @@ security state but still contain memory content and must be encrypted at rest.
 
 `0002_optional_maintenance.sql` installs decay and expiry cron jobs.
 
+**Decide whether you want them before relying on this memory for anything
+durable.** `supabase migration up` applies `0002` with every other migration,
+so the jobs are on unless you remove them. Together they retire any memory that
+has never been recalled with tracking, about 90 days after it was written:
+importance falls 5% a day once a memory has gone 30 days without a tracked
+recall, and a memory below 0.1 with an `access_count` of 0 is retired at 90
+days, whatever its `kind` or original importance. Only `recall` with tracking
+counts as access. `list`, `context`, and `recall` with `track:false` do not — so
+a project that reads its standing decisions with `list`, as
+[RETRIEVAL.md](RETRIEVAL.md) recommends, would lose them on schedule.
+
+That behaviour suits a cache of observations. It does not suit project memory.
+To keep durable memory, remove the jobs:
+
+```sql
+select cron.unschedule('ai-memory-free-expire');
+select cron.unschedule('ai-memory-free-decay');
+```
+
+Retirement by the job is soft: the row stays, with `is_active = false` and
+`metadata.expired_by = 'ai-memory-free-expire'`, and appears in `list` with
+`include_retired`.
+
 `0003_optional_compaction.sql` provides dry-run semantic near-duplicate detection:
 
 ```sql
