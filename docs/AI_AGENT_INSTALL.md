@@ -99,7 +99,7 @@ Use this when the user has no existing Ai-Memory-Free API.
 
 9. Continue with Path B to connect the target repository.
 
-10. Confirm `health` reports release `1.3.0`, protocol `1`,
+10. Confirm `health` reports release `1.4.0`, protocol `1`,
     `gte-small-v1`, and eight module manifests. Do not infer capabilities from the
     repository version when the deployed service reports something else.
 

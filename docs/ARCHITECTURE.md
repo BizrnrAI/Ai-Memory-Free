@@ -37,8 +37,9 @@ Supabase Postgres
 ## Trust Boundaries
 
 1. Clients receive a unique high-entropy token. Only its SHA-256 hash is stored.
-2. The Edge Function holds the service-role key and is the only normal database
-   caller. Service-role access bypasses RLS, so every action is authorized in the
+2. The Edge Function holds the Supabase server key (a secret API key from
+   `SUPABASE_SECRET_KEYS`, or the legacy service-role key) and is the only normal
+   database caller. Service-role access bypasses RLS, so every action is authorized in the
    function before a query or RPC.
 3. Postgres independently constrains dangerous state transitions such as
    supersession and restricts all tables/functions to `service_role`.
@@ -126,13 +127,18 @@ hashes, or salts. Recall auditing is opt-in to control free-tier growth.
 
 ## Retrieval
 
-`gte-small` handles at most 512 tokens per inference. Long items are therefore
-split into bounded text chunks; up to eight evenly distributed chunks are embedded,
-averaged, and normalized into one vector. The full raw content remains available to
-Postgres FTS, so no content is discarded.
+`gte-small` handles at most 512 tokens per inference, and the hosted Edge runtime
+gives a worker about 2 seconds of CPU. Long items are therefore split into
+1,800-character chunks and a bounded number of evenly spaced chunks — two by
+default — are embedded, averaged, and normalized into one vector. The whole raw
+content is indexed by Postgres full-text search, so no content is unsearchable.
+The budget, how it was measured, and how to raise it are in
+[RETRIEVAL.md](RETRIEVAL.md).
 
-`recall()` builds vector and full-text candidate sets, fuses them with Reciprocal
-Rank Fusion, normalizes the fused signal, and blends a transparent effective score:
+`recall()` builds three ranked candidate lists — nearest vectors, full-text
+matches containing every query word, and full-text matches containing any query
+word — fuses them with Reciprocal Rank Fusion, normalizes the fused signal, and
+blends a transparent effective score:
 
 ```text
 effective_score =
@@ -142,6 +148,11 @@ effective_score =
 ```
 
 The response returns `rrf_norm`, `effective_score`, and `final_score`.
+
+Search is not the only way to read. `list` returns a namespace in a fixed order,
+a budget-sized page at a time, with no ranking and no embedding. For a namespace
+that fits in the caller's context it is the reliable way to load "everything
+this project knows", and `recall` is for finding one thing in a larger one.
 
 ## Duplicate And Lifecycle Rules
 

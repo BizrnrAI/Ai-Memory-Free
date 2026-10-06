@@ -1,20 +1,20 @@
-export const RELEASE_VERSION = '1.3.0';
+export const RELEASE_VERSION = '1.4.0';
 export const PROTOCOL_VERSION = '1';
 export const PORTABLE_FORMAT = 'ai-memory-free-portable';
 export const PORTABLE_VERSION = 1;
 
 export const CORE_ACTIONS = [
-  'health', 'whoami', 'remember', 'remember_batch', 'recall', 'context',
+  'health', 'whoami', 'remember', 'remember_batch', 'recall', 'list', 'context',
   'retire', 'supersede', 'portable_export', 'portable_import',
 ] as const;
 
 export const MODULES = [
   {
-    id: 'core', version: '1.2.0', optional: false,
+    id: 'core', version: '1.3.0', optional: false,
     actions: CORE_ACTIONS,
   },
   {
-    id: 'vault-secrets', version: '1.0.0', optional: true,
+    id: 'vault-secrets', version: '1.1.0', optional: true,
     actions: ['secret_store', 'secret_get', 'secret_list', 'secret_retire'],
   },
   {
@@ -30,15 +30,15 @@ export const MODULES = [
     actions: ['link_create', 'link_list', 'link_resolve'],
   },
   {
-    id: 'documents', version: '1.0.0', optional: true,
-    actions: ['document_ingest', 'document_search', 'document_list'],
+    id: 'documents', version: '1.2.0', optional: true,
+    actions: ['document_ingest', 'document_search', 'document_list', 'document_retire'],
   },
   {
-    id: 'maintenance', version: '1.0.0', optional: true,
+    id: 'maintenance', version: '1.1.0', optional: true,
     actions: ['maintenance_status', 'embedding_reindex'],
   },
   {
-    id: 'remote-mcp', version: '1.0.0', optional: true,
+    id: 'remote-mcp', version: '1.2.0', optional: true,
     actions: [],
   },
 ] as const;
@@ -96,4 +96,27 @@ export function boundContext<T extends object>(rows: T[], maxChars: number) {
     used += size;
   }
   return { rows: bounded, usedChars: used, truncated: bounded.length < rows.length };
+}
+
+/** List pages contain complete memories; callers can raise a too-small budget. */
+export function boundList<T extends { content: string }>(rows: T[], maxChars: number) {
+  const bounded: T[] = [];
+  let usedChars = 0;
+  for (const row of rows) {
+    if (usedChars + row.content.length > maxChars) break;
+    bounded.push(row);
+    usedChars += row.content.length;
+  }
+  return {
+    rows: bounded, usedChars, truncated: bounded.length < rows.length,
+    requiredChars: bounded.length === 0 && rows.length > 0 ? rows[0].content.length : null,
+  };
+}
+
+export function contextCharacterBudget(input: { max_chars?: unknown; max_characters?: unknown }) {
+  const value = input.max_chars ?? input.max_characters ?? 20_000;
+  if (!Number.isInteger(value) || Number(value) < 1_000 || Number(value) > 100_000) {
+    throw new RangeError('invalid_context_budget');
+  }
+  return Number(value);
 }

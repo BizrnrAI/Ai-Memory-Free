@@ -4,12 +4,12 @@ import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
 import { MemoryClient } from '@ai-memory-free/client';
 
-const client = new MemoryClient();
+const client = new MemoryClient({ allowInsecureHttp: process.env.MEMORY_ALLOW_INSECURE_HTTP === 'true' });
 
 function buildServer() {
   const server = new McpServer({
     name: 'ai-memory-free',
-    version: '1.3.0',
+    version: '1.4.0',
   });
 
   server.registerTool(
@@ -53,7 +53,7 @@ function buildServer() {
   server.registerTool(
     'memory_remember_batch',
     {
-      description: 'Store up to 50 idempotent durable memories in one request.',
+      description: 'Store up to 50 idempotent durable memories. The adapter splits them into requests the service can embed, so any mix of sizes works.',
       inputSchema: z.object({
         items: z.array(z.object({
           content: z.string().min(1).max(100_000), namespace: z.string().optional(),
@@ -64,7 +64,7 @@ function buildServer() {
         })).min(1).max(50),
       }),
     },
-    async (args) => asText(await client.rememberBatch(args.items)),
+    async (args) => asText({ ok: true, results: await client.rememberMany(args.items) }),
   );
 
   server.registerTool(
@@ -83,6 +83,24 @@ function buildServer() {
   );
 
   server.registerTool(
+    'memory_list',
+    {
+      description: 'Read a namespace in a fixed order, a page at a time. Use this to load everything a project knows (or all of one kind) instead of guessing search terms; follow next_offset until it is null.',
+      inputSchema: z.object({
+        namespace: z.string().optional(),
+        kinds: z.array(z.enum(['note', 'fact', 'decision', 'correction', 'reference', 'procedure'])).optional(),
+        tags: z.array(z.string()).max(64).optional(),
+        order: z.enum(['importance', 'recent']).optional(),
+        limit: z.number().int().min(1).max(200).optional(),
+        offset: z.number().int().min(0).optional(),
+        max_chars: z.number().int().min(1000).max(200_000).optional(),
+        include_retired: z.boolean().optional(),
+      }),
+    },
+    async (args) => asText(await client.list(args)),
+  );
+
+  server.registerTool(
     'memory_context',
     {
       description: 'Build deterministic, budgeted evidence across explicitly authorized namespaces.',
@@ -90,6 +108,8 @@ function buildServer() {
         query: z.string().min(1).max(20_000),
         namespaces: z.array(z.string()).min(1).max(8).optional(),
         max_chars: z.number().int().min(1000).max(100_000).optional(),
+        max_characters: z.number().int().min(1000).max(100_000).optional()
+          .describe('Deprecated alias for max_chars.'),
         per_namespace_limit: z.number().int().min(1).max(20).optional(),
         include_events: z.boolean().optional(),
       }),
@@ -181,14 +201,19 @@ function buildServer() {
   server.registerTool(
     'memory_document_ingest',
     {
-      description: 'Ingest bounded text into the optional document/chunk module.',
+      description: 'Ingest bounded text into the optional document/chunk module. To replace an earlier version, pass supersedes (its id) or replace_same_title, so two versions never compete in search.',
       inputSchema: z.object({
         namespace: z.string().optional(), title: z.string().min(1).max(512), content: z.string().min(1).max(100_000),
         source_uri: z.string().max(2048).optional(), media_type: z.string().max(128).optional(),
         metadata: z.record(z.string(), z.unknown()).optional(),
+        supersedes: z.string().uuid().optional()
+          .describe('Id of the document this one replaces; it is retired once this one is stored.'),
+        replace_same_title: z.boolean().optional()
+          .describe('Retire every other active document in the namespace with the same title.'),
       }),
     },
-    async (args) => asText(await client.ingestDocument(args)),
+    // Repeats the call until every chunk has its vector, so one tool call is a finished ingest.
+    async (args) => asText(await client.ingestDocumentFully(args)),
   );
 
   server.registerTool(
@@ -201,6 +226,27 @@ function buildServer() {
       }),
     },
     async (args) => asText(await client.searchDocuments(args)),
+  );
+
+  server.registerTool(
+    'memory_document_list',
+    {
+      description: 'Page through documents in the optional document/chunk module.',
+      inputSchema: z.object({
+        namespace: z.string().optional(), limit: z.number().int().min(1).max(500).optional(),
+        offset: z.number().int().min(0).max(1_000_000).optional(), include_retired: z.boolean().optional(),
+      }),
+    },
+    async (args) => asText(await client.listDocuments(args)),
+  );
+
+  server.registerTool(
+    'memory_document_retire',
+    {
+      description: 'Retire a document so its chunks no longer participate in search.',
+      inputSchema: z.object({ id: z.string().uuid(), reason: z.string().max(2048).optional() }),
+    },
+    async (args) => asText(await client.retireDocument(args.id, args.reason)),
   );
 
   server.registerTool(
@@ -243,7 +289,7 @@ function buildServer() {
     server.registerTool(
       'memory_secret_store',
       {
-        description: 'Encrypt and store a recoverable secret in Supabase Vault. Requires secrets:write.',
+        description: 'Encrypt and store a recoverable secret in Supabase Vault. Use service.environment.credential_type with matching service, environment, credential_type metadata for discoverability. Requires secrets:write.',
         inputSchema: z.object({
           namespace: z.string().optional(),
           name: z.string().regex(/^[a-zA-Z0-9_.:-]{1,128}$/),
@@ -270,13 +316,26 @@ function buildServer() {
     server.registerTool(
       'memory_secret_list',
       {
-        description: 'List encrypted-secret metadata only. Secret values and Vault ciphertext are never returned.',
+        description: 'Find credentials by indexed safe metadata (query), literal name_prefix, and cursor. Returns names and metadata without values; use an exact name with memory_secret_get.',
         inputSchema: z.object({
           namespace: z.string().optional(),
           include_retired: z.boolean().optional(),
+          limit: z.number().int().min(1).max(500).optional(),
+          cursor: z.string().optional(),
+          name_prefix: z.string().optional(),
+          query: z.string().min(1).max(256).optional(),
         }),
       },
-      async (args) => asText(await client.listSecrets(args.namespace, args.include_retired)),
+      async (args) => asText(await client.listSecrets(args)),
+    );
+
+    server.registerTool(
+      'memory_secret_get_many',
+      {
+        description: 'Decrypt 1 to 10 explicitly named credentials. Requires secrets:read; returns values to this trusted client.',
+        inputSchema: z.object({ namespace: z.string().optional(), names: z.array(z.string().regex(/^[a-zA-Z0-9_.:-]{1,128}$/)).min(1).max(10) }),
+      },
+      async (args) => asText(await client.getSecrets(args)),
     );
 
     server.registerTool(

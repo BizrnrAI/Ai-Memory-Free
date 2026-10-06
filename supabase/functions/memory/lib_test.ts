@@ -1,14 +1,28 @@
 import {
+  canonicalSecretName,
   averageNormalizedEmbeddings,
   bearerToken,
   chunkEmbeddingText,
+  chunksPerText,
   containsLikelySecret,
+  contentByteLimit,
+  DEFAULT_EMBED_CHARS_PER_REQUEST,
+  EMBED_CHUNK_CHARS,
+  embedCharBudget,
+  embedCostBudget,
+  EMBED_RUN_OVERHEAD,
+  embeddingCost,
   hasPermission,
+  isMemoryKind,
+  MEMORY_KINDS,
   namespaceAllowed,
+  resolveSupabaseServerKey,
   sha256Hex,
   timingSafeEqualHex,
+  utf8ByteLength,
+  vectorCoverage,
 } from './lib.ts';
-import { boundContext, isPortableResource, splitDocumentText } from './protocol.ts';
+import { boundList, boundContext, contextCharacterBudget, isPortableResource, splitDocumentText } from './protocol.ts';
 
 Deno.test('scoped permissions and namespaces fail closed', () => {
   assert(hasPermission(['memory:admin'], 'memory:read'));
@@ -131,6 +145,13 @@ Deno.test('context budgets preserve the best first result and report truncation'
   assertEquals(oversized.usedChars, 12);
 });
 
+Deno.test('context budgets accept the documented field and the legacy long-form alias', () => {
+  assertEquals(contextCharacterBudget({ max_chars: 2_500 }), 2_500);
+  assertEquals(contextCharacterBudget({ max_characters: 2_500 }), 2_500);
+  assertEquals(contextCharacterBudget({ max_chars: 3_000, max_characters: 2_500 }), 3_000);
+  assertThrows(() => contextCharacterBudget({ max_characters: 500 }), 'invalid_context_budget');
+});
+
 Deno.test('portable resources are an explicit allowlist', () => {
   assert(isPortableResource('memories'));
   assert(isPortableResource('source_links'));
@@ -151,3 +172,98 @@ function assertApprox(actual: number, expected: number) {
     throw new Error(`expected approximately ${expected}, received ${actual}`);
   }
 }
+
+function assertThrows(operation: () => unknown, expected: string) {
+  try {
+    operation();
+  } catch (error) {
+    if (error instanceof Error && error.message === expected) return;
+    throw error;
+  }
+  throw new Error(`expected ${expected} to be thrown`);
+}
+
+Deno.test('the embedding budget defaults to what hosted Supabase can always afford', () => {
+  assertEquals(embedCharBudget(undefined), DEFAULT_EMBED_CHARS_PER_REQUEST);
+  assertEquals(embedCharBudget(''), DEFAULT_EMBED_CHARS_PER_REQUEST);
+  assertEquals(embedCharBudget('not a number'), DEFAULT_EMBED_CHARS_PER_REQUEST);
+  assertEquals(embedCharBudget('100'), EMBED_CHUNK_CHARS);
+  assertEquals(embedCharBudget('14400'), 14_400);
+  assertEquals(chunksPerText(DEFAULT_EMBED_CHARS_PER_REQUEST), 2);
+  assertEquals(chunksPerText(EMBED_CHUNK_CHARS), 1);
+  assertEquals(chunksPerText(1_000_000), 8);
+});
+
+Deno.test('embedding cost counts every run of the model, not only the characters', () => {
+  const short = 'a short memory';
+  assertEquals(embeddingCost(short, 2), EMBED_RUN_OVERHEAD + short.length);
+  const long = 'word '.repeat(20_000);
+  assert(embeddingCost(long, 2) <= 2 * (EMBED_CHUNK_CHARS + EMBED_RUN_OVERHEAD));
+  assert(embeddingCost(long, 1) <= EMBED_CHUNK_CHARS + EMBED_RUN_OVERHEAD);
+  // One text always fits the budget it is sampled to; thirty one-liners do not.
+  assert(embeddingCost(long, chunksPerText(DEFAULT_EMBED_CHARS_PER_REQUEST)) <= embedCostBudget(DEFAULT_EMBED_CHARS_PER_REQUEST));
+  assert(30 * embeddingCost(short, 2) > embedCostBudget(DEFAULT_EMBED_CHARS_PER_REQUEST));
+  assertEquals(embedCostBudget(DEFAULT_EMBED_CHARS_PER_REQUEST), 2 * (EMBED_CHUNK_CHARS + EMBED_RUN_OVERHEAD));
+  assertEquals(vectorCoverage(short, 2), 'full');
+  assertEquals(vectorCoverage(long, 2), 'sampled');
+  assertEquals(chunkEmbeddingText(long, EMBED_CHUNK_CHARS, 1).length, 1);
+  assertEquals(chunkEmbeddingText(long, EMBED_CHUNK_CHARS, 2).length, 2);
+});
+
+Deno.test('the optional content cap is measured in UTF-8 bytes', () => {
+  assertEquals(contentByteLimit(undefined), null);
+  assertEquals(contentByteLimit(''), null);
+  assertEquals(contentByteLimit('5000'), 5_000);
+  assertEquals(contentByteLimit('1'), 256);
+  assertEquals(utf8ByteLength('abc'), 3);
+  assertEquals(utf8ByteLength('é'), 2);
+});
+
+Deno.test('memory kinds are an explicit list', () => {
+  assertEquals(MEMORY_KINDS.length, 6);
+  assert(isMemoryKind('decision'));
+  assert(!isMemoryKind('banana'));
+  assert(!isMemoryKind(undefined));
+});
+
+Deno.test('the server key prefers the new Supabase secret keys and falls back to the legacy one', () => {
+  const secretKeys = JSON.stringify({ default: 'sb_secret_default', memory: 'sb_secret_named' });
+  assertEquals(JSON.stringify(resolveSupabaseServerKey({ secretKeys, serviceRoleKey: 'legacy' })), JSON.stringify({ key: 'sb_secret_default', source: 'secret_keys' }));
+  assertEquals(JSON.stringify(resolveSupabaseServerKey({ secretKeys, keyName: 'memory', serviceRoleKey: 'legacy' })), JSON.stringify({ key: 'sb_secret_named', source: 'secret_keys' }));
+  // A name that is not in the dictionary, an empty dictionary, or text that is not JSON: use the legacy key.
+  assertEquals(JSON.stringify(resolveSupabaseServerKey({ secretKeys, keyName: 'absent', serviceRoleKey: 'legacy' })), JSON.stringify({ key: 'legacy', source: 'service_role' }));
+  assertEquals(JSON.stringify(resolveSupabaseServerKey({ secretKeys: '{}', serviceRoleKey: 'legacy' })), JSON.stringify({ key: 'legacy', source: 'service_role' }));
+  assertEquals(JSON.stringify(resolveSupabaseServerKey({ secretKeys: 'not json', serviceRoleKey: 'legacy' })), JSON.stringify({ key: 'legacy', source: 'service_role' }));
+  assertEquals(JSON.stringify(resolveSupabaseServerKey({ secretKeys: '["a"]', serviceRoleKey: ' ' })), JSON.stringify(null));
+  assertEquals(JSON.stringify(resolveSupabaseServerKey({})), JSON.stringify(null));
+});
+
+Deno.test('a Supabase secret API key is caught, a publishable one is not', () => {
+  assert(containsLikelySecret('key: sb_secret_' + 'A1b2C3d4E5f6G7h8I9j0K1l2'));
+  assert(!containsLikelySecret('key: sb_publishable_' + 'A1b2C3d4E5f6G7h8I9j0K1l2'));
+});
+
+Deno.test('list pages never discard the tail of an oversized memory', () => {
+  const rows = [{ content: 'a'.repeat(1500) }, { content: 'b'.repeat(700) }];
+  const tooSmall = boundList(rows, 1000);
+  assertEquals(tooSmall.rows.length, 0);
+  assertEquals(tooSmall.requiredChars, 1500);
+  const first = boundList(rows, 1600);
+  assertEquals(first.rows.length, 1);
+  assertEquals(first.rows[0].content.length, 1500);
+  assertEquals(first.truncated, true);
+  const second = boundList(rows.slice(first.rows.length), 1600);
+  assertEquals(second.rows[0].content.length, 700);
+  assertEquals(second.truncated, false);
+});
+
+
+Deno.test('credential naming validates complete identities while preserving legacy metadata', () => {
+  assertEquals(canonicalSecretName({ service: 'github', environment: 'production', credential_type: 'api_token' }), 'github.production.api_token');
+  assertEquals(canonicalSecretName({ service: 'github' }), null);
+  for (const service of ['GitHub', '', 'github.com', 'a'.repeat(41)]) {
+    let rejected = false;
+    try { canonicalSecretName({ service, environment: 'production', credential_type: 'api_token' }); } catch { rejected = true; }
+    assert(rejected);
+  }
+});

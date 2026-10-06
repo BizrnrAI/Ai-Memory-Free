@@ -30,3 +30,5 @@ namespace, so callers can retry after a timeout without creating duplicate truth
 and character budget. The token must hold `memory:read` for every requested
 namespace. Results are merged deterministically by the existing final score and
 then truncated to the character budget. Wildcards are never inferred.
+`max_chars` is canonical; the early `max_characters` spelling remains accepted as
+a compatibility alias, with `max_chars` taking precedence when both are present.

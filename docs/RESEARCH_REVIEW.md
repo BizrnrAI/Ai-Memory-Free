@@ -3,6 +3,9 @@
 Comparison snapshot: 2026-06-22. Security and platform guidance refreshed:
 2026-07-09.
 
+Retrieval was measured on real data in 2026-10; the method, the numbers and the
+alternatives considered are in [RETRIEVAL.md](RETRIEVAL.md).
+
 This review compares Ai-Memory-Free against major open-source AI memory and
 context projects. The goal is not to clone the biggest framework. The goal is to
 extract the durable practices that fit a zero-cost, model-agnostic, reproducible

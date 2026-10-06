@@ -104,7 +104,7 @@ executes file content.
   `vault.create_secret`/`vault.update_secret`; returns safe registry metadata.
 - `secret_get`: decrypts one named active secret and returns it only to a client with
   `secrets:read` for that namespace.
-- `secret_list`: never reads Vault and never returns plaintext or ciphertext.
+- `secret_list`: uses indexed names/safe metadata, name-cursor pagination and a literal name prefix; never reads Vault and never returns plaintext or ciphertext.
 - `secret_retire`: disables API retrieval without deleting the encrypted Vault row;
   a later store rotates/reactivates it.
 
@@ -123,6 +123,15 @@ Ai-Memory-Free scoped tokens and cannot query Postgres or Vault directly.
 The service role is intentionally powerful; the security-definer wrapper narrows
 the application's normal code path but is not a substitute for protecting the
 service-role key itself.
+
+Supabase is retiring the JWT `service_role` key at the end of 2026 in favour of
+secret API keys (`sb_secret_…`). The Edge runtime provides them as
+`SUPABASE_SECRET_KEYS`, a JSON dictionary keyed by key name, and the function
+uses the `default` entry when it exists (or the name in
+`MEMORY_SUPABASE_SECRET_KEY_NAME`), falling back to `SUPABASE_SERVICE_ROLE_KEY`.
+`health` reports which one is in use as `server_key`, never the key. A secret
+key carries the same power as the service role and needs the same care; the
+credential detector rejects one pasted into memory content.
 
 ## Bootstrap Token
 
@@ -187,3 +196,18 @@ Memories and secret metadata may be sensitive. Vault ciphertext remains encrypte
 in database dumps because its encryption key is stored separately by Supabase.
 Still encrypt backup files, restrict access, and test restores. A restored project
 must have the correct Supabase Vault key context to decrypt its Vault data.
+
+## v1.4 Credential Access Hardening
+
+The additive Vault wrapper migration fixes empty-description storage, serializes
+first creation and rotation per logical credential, and locks retrieval against
+concurrent rotation/retirement. Internal Vault names use a JSON namespace/name
+pair so valid identifiers containing colons cannot collide. Existing ciphertext
+and Vault UUIDs are preserved; the encryption primitive remains Supabase Vault.
+
+Client requests require HTTPS by default (HTTP loopback is permitted), reject
+redirects, and use `cache:no-store`. Private HTTP deployments require explicit
+opt-in. Inventory is metadata-only and fully paginated; `getSecrets` decrypts only
+1..10 explicit names through individually authorized/audited `secret_get` calls.
+Caller authentication tokens remain hash-only. See [SECRETS.md](SECRETS.md) for the
+credential retrieval and rotation workflow.

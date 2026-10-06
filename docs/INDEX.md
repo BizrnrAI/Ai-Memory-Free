@@ -15,6 +15,7 @@ Choose the shortest path that matches your goal.
 - [v1.2 module contract](MODULES.md)
 - [Protocol v1](PROTOCOL.md)
 - [HTTPS action reference](ACTIONS.md)
+- [Retrieval: how recall works and how it was measured](RETRIEVAL.md)
 - [Agent activity events](EVENTS.md)
 - [Provenance and relationships](PROVENANCE.md)
 - [Document memory](DOCUMENTS.md)
@@ -22,12 +23,14 @@ Choose the shortest path that matches your goal.
 - [MCP integration](MCP.md)
 - [Remote OAuth MCP](REMOTE_MCP.md)
 - [Upgrade from v0.2](UPGRADE_V1_2.md)
+- [Upgrade from v1.3](UPGRADE_V1_4.md)
 - [Operations](OPERATIONS.md)
 - [Exact replication checklist](REPLICATE.md)
 - [Canonical implementation guide](ZERO_COST_SSOT_MEMORY.md)
 
 ## Trust And Maintenance
 
+- [Encrypted API keys and tokens](SECRETS.md)
 - [Security model](SECURITY.md)
 - [Full repository audit](AUDIT.md)
 - [Design decisions](DECISIONS.md)

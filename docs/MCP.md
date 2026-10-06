@@ -53,12 +53,19 @@ Links an old row to an active replacement in the same namespace.
 ## v1.2 Module Tools
 
 - `memory_remember_batch`
+- `memory_list` — read a namespace in a fixed order, a page at a time; the
+  reliable way to load everything a project knows
 - `memory_context`
 - `memory_event_append`, `memory_event_list`
 - `memory_source_upsert`, `memory_source_link`
 - `memory_link_create`, `memory_link_list`, `memory_link_resolve`
-- `memory_document_ingest`, `memory_document_search`
+- `memory_document_ingest`, `memory_document_search`, `memory_document_list`,
+  `memory_document_retire`
 - `memory_maintenance_status`
+
+`memory_remember_batch` splits what it is given into requests the service can
+embed, and `memory_document_ingest` repeats its call until every chunk has a
+vector, so each is one finished operation for the agent.
 
 These tools call the same versioned API as HTTPS and TypeScript. `memory_health`
 is the canonical capability list. Activity events never accept chain-of-thought;
@@ -70,6 +77,7 @@ Set `MCP_ENABLE_SECRET_TOOLS=true` to register:
 
 - `memory_secret_store`
 - `memory_secret_get`
+- `memory_secret_get_many` — 1..10 explicitly selected logical names
 - `memory_secret_list`
 - `memory_secret_retire`
 
@@ -151,3 +159,6 @@ References:
 - [MCP authorization](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization)
 - [MCP transports](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports)
 - [Optional Supabase OAuth remote MCP](REMOTE_MCP.md)
+
+Secret inventory supports `limit`, `cursor`, and literal `name_prefix`; follow
+`next_cursor` until null. See [SECRETS.md](SECRETS.md) for scoped credential access.
