@@ -13,7 +13,8 @@ const content = readFileSync(path, 'utf8');
 if (content.includes('\0')) throw new Error('binary content is not supported');
 const sourceUri = values.get('source-uri') ?? `file:${basename(path)}`;
 const client = new MemoryClient();
-const result = await client.ingestDocument({
+// A document longer than one request can embed is finished over several calls.
+const result = await client.ingestDocumentFully({
   namespace,
   title: values.get('title') ?? basename(path),
   content,

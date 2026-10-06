@@ -9,7 +9,7 @@ const client = new MemoryClient();
 function buildServer() {
   const server = new McpServer({
     name: 'ai-memory-free',
-    version: '1.3.0',
+    version: '1.4.0',
   });
 
   server.registerTool(
@@ -80,6 +80,24 @@ function buildServer() {
       }),
     },
     async (args) => asText(await client.recall(args)),
+  );
+
+  server.registerTool(
+    'memory_list',
+    {
+      description: 'Read a namespace in a fixed order, a page at a time. Use this to load everything a project knows (or all of one kind) instead of guessing search terms; follow next_offset until it is null.',
+      inputSchema: z.object({
+        namespace: z.string().optional(),
+        kinds: z.array(z.enum(['note', 'fact', 'decision', 'correction', 'reference', 'procedure'])).optional(),
+        tags: z.array(z.string()).max(64).optional(),
+        order: z.enum(['importance', 'recent']).optional(),
+        limit: z.number().int().min(1).max(200).optional(),
+        offset: z.number().int().min(0).optional(),
+        max_chars: z.number().int().min(1000).max(200_000).optional(),
+        include_retired: z.boolean().optional(),
+      }),
+    },
+    async (args) => asText(await client.list(args)),
   );
 
   server.registerTool(
@@ -183,7 +201,7 @@ function buildServer() {
   server.registerTool(
     'memory_document_ingest',
     {
-      description: 'Ingest bounded text into the optional document/chunk module.',
+      description: 'Ingest bounded text into the optional document/chunk module. A long document comes back with chunks_pending above 0: it is searchable at once, and calling again with the same content embeds the next chunks.',
       inputSchema: z.object({
         namespace: z.string().optional(), title: z.string().min(1).max(512), content: z.string().min(1).max(100_000),
         source_uri: z.string().max(2048).optional(), media_type: z.string().max(128).optional(),

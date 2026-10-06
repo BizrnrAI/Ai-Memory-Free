@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { ACTIONS, MODULES, PORTABLE_RESOURCES, PROTOCOL_VERSION, RELEASE_VERSION } from '../supabase/functions/memory/protocol.js';
 
-if (RELEASE_VERSION !== '1.3.0') throw new Error('release version must be 1.3.0');
+// The release version is declared once, in protocol.ts. Everything else that
+// states it is checked against that below, so a bump cannot leave one behind.
+if (!/^\d+\.\d+\.\d+$/.test(RELEASE_VERSION)) throw new Error('release version must be semantic');
 if (PROTOCOL_VERSION !== '1') throw new Error('protocol version must remain backwards-compatible v1');
 if (new Set(ACTIONS).size !== ACTIONS.length) throw new Error('actions must be unique');
 if (new Set(MODULES.map((module) => module.id)).size !== MODULES.length) throw new Error('module ids must be unique');
@@ -18,5 +20,12 @@ for (const path of ['schemas/request-v1.schema.json', 'schemas/module-manifest.s
 for (const path of ['package.json', 'packages/client/package.json', 'packages/mcp-server/package.json']) {
   const pkg = JSON.parse(readFileSync(path, 'utf8')) as { version?: string };
   if (pkg.version !== RELEASE_VERSION) throw new Error(`${path} version is not ${RELEASE_VERSION}`);
+}
+for (const [path, needle] of [
+  ['packages/mcp-server/src/index.ts', `version: '${RELEASE_VERSION}'`],
+  ['CITATION.cff', `version: ${RELEASE_VERSION}`],
+  ['CHANGELOG.md', `## ${RELEASE_VERSION} `],
+] as const) {
+  if (!readFileSync(path, 'utf8').includes(needle)) throw new Error(`${path} does not state release ${RELEASE_VERSION}`);
 }
 console.log(`validated protocol v${PROTOCOL_VERSION}, release ${RELEASE_VERSION}, ${MODULES.length} modules, and ${ACTIONS.length} actions`);

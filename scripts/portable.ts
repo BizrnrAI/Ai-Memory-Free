@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { MemoryClient } from '@ai-memory-free/client';
+import { MemoryClient, packByEmbedBudget } from '@ai-memory-free/client';
+import { RELEASE_VERSION } from '../supabase/functions/memory/protocol.js';
 
 const resources = ['memories', 'supersessions', 'events', 'sources', 'source_links', 'links', 'documents'] as const;
 const args = parseArgs(process.argv.slice(2));
@@ -26,7 +27,7 @@ async function exportPortable() {
   }
   const payload = records.map((record) => JSON.stringify(record)).join('\n');
   const header = {
-    format: 'ai-memory-free-portable', version: 1, release: '1.3.0', namespace,
+    format: 'ai-memory-free-portable', version: 1, release: RELEASE_VERSION, namespace,
     generated_at: new Date().toISOString(), resources, record_count: records.length,
     payload_sha256: sha256(payload),
     excluded: ['secrets', 'vault_ciphertext', 'credentials', 'embeddings', 'audit_log', 'rate_limits'],
@@ -59,10 +60,19 @@ async function importPortable() {
   }
   let imported = 0;
   let skipped = 0;
+  // Memories are embedded as they are imported, and one request can only embed
+  // so much, so their pages are sized by the service's own limits. Documents
+  // are written whole and their chunks embedded afterwards.
+  const limits = await client.serviceLimits();
   for (const resource of resources) {
     const selected = records.filter((record) => record.resource === resource).map((record) => record.data);
-    for (let index = 0; index < selected.length; index += 20) {
-      const result = await client.portableImport({ namespace, resource, records: selected.slice(index, index + 20) }) as {
+    const pages = resource === 'memories'
+      ? packByEmbedBudget(selected, (record) => String(record.content ?? ''), limits, 20)
+      : resource === 'documents'
+      ? selected.map((record) => [record])
+      : Array.from({ length: Math.ceil(selected.length / 20) }, (_, index) => selected.slice(index * 20, index * 20 + 20));
+    for (const page of pages) {
+      const result = await client.portableImport({ namespace, resource, records: page }) as {
         imported?: number; skipped?: number;
       };
       imported += result.imported ?? 0;
@@ -70,6 +80,10 @@ async function importPortable() {
     }
   }
   console.log(`portable import complete: imported=${imported} skipped=${skipped}`);
+  if (records.some((record) => record.resource === 'documents') && limits?.embed_chars_per_request) {
+    const chunks = await client.embedPendingDocumentChunks(namespace);
+    console.log(`document chunks embedded: ${chunks.processed}; still pending: ${chunks.remaining}`);
+  }
 }
 
 function parseArgs(input: string[]) {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { MemoryClient } from '../packages/client/src/index.js';
+import { MemoryClient, MemoryRequestError, packByEmbedBudget } from '../packages/client/src/index.js';
 
 test('client sends bearer auth without exposing it in the request body', async () => {
   let seen: RequestInit | undefined;
@@ -83,4 +83,86 @@ test('client converts non-JSON failures into a bounded error', async () => {
   const client = new MemoryClient({ apiUrl: 'https://memory.example.test', token: 'client-token', fetchImpl });
 
   await assert.rejects(() => client.health(), /memory request failed: 502/);
+});
+
+test('client retries a request the host cut off for CPU time, and no other failure', async () => {
+  let calls = 0;
+  const fetchImpl: typeof fetch = async () => {
+    calls += 1;
+    if (calls < 3) return new Response('', { status: 546 });
+    return new Response(JSON.stringify({ ok: true, created: true, memory: { id: 'm1' } }));
+  };
+  const client = new MemoryClient({ apiUrl: 'https://memory.example.test', token: 't', fetchImpl });
+  const stored = await client.remember({ content: 'retry me' });
+  assert.equal(stored.ok, true);
+  assert.equal(calls, 3);
+
+  let refused = 0;
+  const refusing: typeof fetch = async () => {
+    refused += 1;
+    return new Response(JSON.stringify({ ok: false, error: 'embedding_budget_exceeded', max_embed_chars: 3600 }), { status: 413 });
+  };
+  const strict = new MemoryClient({ apiUrl: 'https://memory.example.test', token: 't', fetchImpl: refusing });
+  await assert.rejects(strict.rememberBatch([{ content: 'x' }]), (error: unknown) => {
+    assert.ok(error instanceof MemoryRequestError);
+    assert.equal(error.message, 'embedding_budget_exceeded');
+    assert.equal(error.status, 413);
+    assert.equal(error.body.max_embed_chars, 3600);
+    return true;
+  });
+  assert.equal(refused, 1);
+});
+
+test('client never repeats a write that is not safe to send twice', async () => {
+  const seen: string[] = [];
+  const fetchImpl: typeof fetch = async (_input, init) => {
+    seen.push(JSON.parse(String(init?.body)).action);
+    return new Response('', { status: 546 });
+  };
+  const client = new MemoryClient({ apiUrl: 'https://memory.example.test', token: 't', fetchImpl });
+  await assert.rejects(client.storeSecret({ name: 'k', secret: 'v' }));
+  await assert.rejects(client.appendEvent({ event_type: 'task.done', summary: 'no external id' }));
+  assert.deepEqual(seen, ['secret_store', 'event_append']);
+  seen.length = 0;
+  await assert.rejects(client.appendEvent({ event_type: 'task.done', summary: 'keyed', source_system: 's', external_id: 'e1' }));
+  assert.equal(seen.length, 3);
+});
+
+test('batches are packed to the embedding budget the service reports', () => {
+  const limits = { embed_chars_per_request: 3600, embed_chunk_chars: 1800, embed_chunks_per_text: 2 };
+  const items = ['a'.repeat(1000), 'b'.repeat(1000), 'c'.repeat(2000), 'd'.repeat(50_000), 'e'.repeat(10)];
+  const batches = packByEmbedBudget(items, (text) => text, limits, 50);
+  // 1000+1000 fit; adding 2000 would exceed 3600. The 50,000-character text costs only the 3,600 it is sampled to.
+  assert.deepEqual(batches.map((batch) => batch.map((text) => text[0])), [['a', 'b'], ['c'], ['d'], ['e']]);
+  assert.deepEqual(packByEmbedBudget(items, (text) => text, { ...limits, embed_chars_per_request: null }, 2).map((batch) => batch.length), [2, 2, 1]);
+  assert.deepEqual(packByEmbedBudget([], (text: string) => text, limits, 50), []);
+});
+
+test('listAll follows next_offset to the end of a namespace', async () => {
+  const offsets: unknown[] = [];
+  const fetchImpl: typeof fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body)) as { offset: number };
+    offsets.push(body.offset);
+    const page = body.offset === 0 ? { memories: [{ id: 'a' }, { id: 'b' }], next_offset: 2 } : { memories: [{ id: 'c' }], next_offset: null };
+    return new Response(JSON.stringify({ ok: true, namespace: 'p', order: 'importance', budget: {}, ...page }));
+  };
+  const client = new MemoryClient({ apiUrl: 'https://memory.example.test', token: 't', fetchImpl });
+  const all = await client.listAll({ namespace: 'p', kinds: ['decision'] });
+  assert.deepEqual(all.map((memory) => memory.id), ['a', 'b', 'c']);
+  assert.deepEqual(offsets, [0, 2]);
+});
+
+test('ingestDocumentFully repeats the call until no chunk is pending', async () => {
+  let calls = 0;
+  const fetchImpl: typeof fetch = async () => {
+    calls += 1;
+    const pending = Math.max(0, 5 - calls * 2);
+    return new Response(JSON.stringify({ ok: true, created: calls === 1, reactivated: false, document: { id: 'd' }, chunks_created: calls === 1 ? 5 : 0, chunks_embedded: 2, chunks_pending: pending }));
+  };
+  const client = new MemoryClient({ apiUrl: 'https://memory.example.test', token: 't', fetchImpl });
+  const result = await client.ingestDocumentFully({ title: 'T', content: 'C' });
+  assert.equal(calls, 3);
+  assert.equal(result.chunks_pending, 0);
+  assert.equal(result.created, true);
+  assert.equal(result.chunks_created, 5);
 });
