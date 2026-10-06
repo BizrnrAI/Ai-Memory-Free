@@ -280,7 +280,7 @@ limits can change; verify official pricing and platform docs before deployment.
 
 ## 16. Final Checklist
 
-- [ ] migrations `0001` and `0004` applied; optional maintenance reviewed
+- [ ] every migration in `supabase/migrations/` applied; optional maintenance (`0002`, `0003`) reviewed
 - [ ] all tables RLS-enabled; public/anon/authenticated privileges absent
 - [ ] scoped hashed client created; wildcard bootstrap token not used normally
 - [ ] namespace-denial, revocation, and expiry verified

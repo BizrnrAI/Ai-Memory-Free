@@ -5,9 +5,11 @@ first public release.
 
 ## 1.4.0 - 2026-10-06
 
-Upgrade notes: [docs/UPGRADE_V1_4.md](docs/UPGRADE_V1_4.md). Apply migration
-`0013`, redeploy both functions, and read "Changed" before upgrading a caller
-that relied on the old duplicate handling.
+Upgrade notes: [docs/UPGRADE_V1_4.md](docs/UPGRADE_V1_4.md). Apply the two new
+migrations (`0013_recall_any_word_and_external_ids` and
+`20261006224234_vault_secret_access_hardening`), redeploy both functions, and
+read "Changed" before upgrading a caller that relied on the old duplicate
+handling.
 
 ### Added
 
@@ -57,7 +59,6 @@ that relied on the old duplicate handling.
 - paginated document inventory and soft document retirement (`document_retire`),
   so stale document versions stop competing in search; ingesting a retired
   document again reactivates it
-- remote MCP answers `ping`
 - `.github/dependabot.yml`: weekly grouped updates for npm and GitHub Actions
 
 ### Changed

@@ -27,6 +27,13 @@ which recreating a function discards. Versions `0009`–`0012` are intentionally
 unused upstream. Apply it before deploying the v1.4 function: the function reads
 the new columns. See [UPGRADE_V1_4.md](UPGRADE_V1_4.md).
 
+Migration `20261006224234_vault_secret_access_hardening` replaces the two Vault
+wrapper functions in place (same signatures) and adds a searchable index of safe
+credential names and descriptions; no stored value is rewritten. It is the first
+migration named with a Supabase timestamp rather than a four-digit number, so it
+sorts after `0013`; new migrations follow that convention. See
+[SECRETS.md](SECRETS.md).
+
 Migration `0005` adds v1.2 modules. It is additive and leaves the v0.2 memory table,
 inline embeddings, actions, and tokens compatible. Follow
 [UPGRADE_V1_2.md](UPGRADE_V1_2.md) for the effect checks.

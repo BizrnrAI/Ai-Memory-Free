@@ -5,7 +5,7 @@ untouched; nothing needs re-embedding.
 
 ## Steps
 
-1. Apply the migration **first**. The v1.4 function relies on it.
+1. Apply the two new migrations **first**. The v1.4 function relies on them.
 
    ```bash
    supabase migration up --linked
@@ -75,5 +75,6 @@ mode, and a cap on memory size.
 
 ## Rolling Back
 
-Redeploy the v1.3 function. Migration `0013` can stay: the v1.3 function works
-with the new `recall` and ignores the extra columns.
+Redeploy the v1.3 function. Both migrations can stay: the v1.3 function works
+with the new `recall` and ignores the extra columns, and the Vault wrappers keep
+their signatures.
