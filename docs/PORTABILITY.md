@@ -25,7 +25,8 @@ npm run portable -- import --namespace my-project --input ./memory.ndjson
 
 Import validates format, namespace, record types, and SHA-256 payload checksum
 without writing. Add `--write` after review. Records are imported in dependency
-order and batches of twenty. IDs are retained where relationships require them;
+order, in batches sized from the destination's `health` limits so each request
+stays inside its embedding budget (twenty records at most). IDs are retained where relationships require them;
 duplicates are skipped safely.
 
 ## Included

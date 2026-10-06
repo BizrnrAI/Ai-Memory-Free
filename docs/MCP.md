@@ -50,7 +50,7 @@ Retires a memory without deleting provenance.
 
 Links an old row to an active replacement in the same namespace.
 
-## v1.2 Module Tools
+## Module Tools
 
 - `memory_remember_batch`
 - `memory_list` — read a namespace in a fixed order, a page at a time; the
@@ -151,8 +151,9 @@ API through `@ai-memory-free/client`.
 This repository intentionally does not expose a remote HTTP MCP endpoint with a
 static bearer token. Current MCP authorization guidance distinguishes local stdio
 (environment credentials) from hosted HTTP (OAuth 2.1 and protected-resource
-metadata). A secure hosted MCP deployment should add a compliant authorization
-layer in front of the same API, not bypass it or fork the memory implementation.
+metadata). The optional remote MCP function is that compliant layer: it sits in
+front of the same API and neither bypasses it nor forks the memory
+implementation.
 
 References:
 

@@ -6,12 +6,19 @@ An agent can recreate the secure no-cost system from this repository alone:
    `docs/ARCHITECTURE.md`, and `docs/SECURITY.md`.
 2. Create a free Supabase project.
 3. Run `npm ci`.
-4. Apply `0001_zero_cost_memory.sql`.
-5. Optionally apply `0002_optional_maintenance.sql` and
-   `0003_optional_compaction.sql`.
-6. Apply `0004_scoped_access_and_supabase_vault.sql` (enables Supabase Vault).
-7. Apply `0005_v1_2_modular_memory.sql` (adds optional modules without rewriting
-   core memory).
+4. Apply every file in `supabase/migrations/` in filename order with
+   `supabase migration up --linked`. The directory is the list; nothing here
+   restates it.
+5. Decide on the scheduled jobs before relying on the memory.
+   `0002_optional_maintenance.sql` schedules importance decay and the automatic
+   retirement of memories that are never recalled with tracking. Read
+   [Optional Memory Maintenance](OPERATIONS.md#optional-memory-maintenance) and
+   unschedule both jobs if the installation should keep every memory until
+   someone retires it. `0003_optional_compaction.sql` only adds a dry-run
+   near-duplicate report; it schedules nothing.
+6. Confirm `0004_scoped_access_and_supabase_vault.sql` enabled Supabase Vault.
+7. When the project already runs an earlier release, follow
+   [UPGRADE_V1_4.md](UPGRADE_V1_4.md) instead of this checklist.
 8. Generate a scoped client with `npm run token:create -- ...`.
 9. Save the plaintext token in the caller's secret store and execute the generated
    hash-only SQL in Supabase.
