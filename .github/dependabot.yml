@@ -1,0 +1,23 @@
+# Keeps the toolchain from going stale between releases. One grouped pull
+# request a week per ecosystem; nothing merges without review.
+#
+# Not covered: the Deno side (`deno.json`, `deno.lock`) and the gitleaks image
+# tag in check.yml. Refresh those with `deno update` and by hand.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      toolchain:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    groups:
+      actions:
+        patterns: ["*"]
