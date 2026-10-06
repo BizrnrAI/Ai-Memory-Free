@@ -38,7 +38,7 @@ export const MODULES = [
     actions: ['maintenance_status', 'embedding_reindex'],
   },
   {
-    id: 'remote-mcp', version: '1.1.0', optional: true,
+    id: 'remote-mcp', version: '1.2.0', optional: true,
     actions: [],
   },
 ] as const;
@@ -96,6 +96,21 @@ export function boundContext<T extends object>(rows: T[], maxChars: number) {
     used += size;
   }
   return { rows: bounded, usedChars: used, truncated: bounded.length < rows.length };
+}
+
+/** List pages contain complete memories; callers can raise a too-small budget. */
+export function boundList<T extends { content: string }>(rows: T[], maxChars: number) {
+  const bounded: T[] = [];
+  let usedChars = 0;
+  for (const row of rows) {
+    if (usedChars + row.content.length > maxChars) break;
+    bounded.push(row);
+    usedChars += row.content.length;
+  }
+  return {
+    rows: bounded, usedChars, truncated: bounded.length < rows.length,
+    requiredChars: bounded.length === 0 && rows.length > 0 ? rows[0].content.length : null,
+  };
 }
 
 export function contextCharacterBudget(input: { max_chars?: unknown; max_characters?: unknown }) {

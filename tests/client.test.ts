@@ -179,3 +179,28 @@ test('ingestDocumentFully repeats the call until no chunk is pending', async () 
   assert.equal(result.created, true);
   assert.equal(result.chunks_created, 5);
 });
+
+test('listAll retries an oversized row with enough budget without skipping it', async () => {
+  const requests: Record<string, unknown>[] = [];
+  const fetchImpl: typeof fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body));
+    requests.push(body);
+    if (body.max_chars < 1500) return Response.json({ error: 'list_budget_too_small', required_chars: 1500 }, { status: 413 });
+    return Response.json({ memories: [{ id: 'long', content: 'a'.repeat(1500) }], next_offset: null });
+  };
+  const client = new MemoryClient({ apiUrl: 'https://memory.example.test', token: 't', fetchImpl });
+  const rows = await client.listAll({ max_chars: 1000 });
+  assert.equal(rows[0].content.length, 1500);
+  assert.deepEqual(requests.map((r) => [r.offset, r.max_chars]), [[0, 1000], [0, 1500]]);
+});
+
+test('unknown actions are never retried and generic input cannot override the selected action', async () => {
+  const actions: string[] = [];
+  const fetchImpl: typeof fetch = async (_input, init) => {
+    actions.push(JSON.parse(String(init?.body)).action);
+    return new Response('', { status: 503 });
+  };
+  const client = new MemoryClient({ apiUrl: 'https://memory.example.test', token: 't', fetchImpl });
+  await assert.rejects(client.call('custom_write', { action: 'health' }));
+  assert.deepEqual(actions, ['custom_write']);
+});

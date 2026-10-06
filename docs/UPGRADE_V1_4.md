@@ -48,6 +48,12 @@ untouched; nothing needs re-embedding.
   `vector:"sampled"`. The whole text is still stored and keyword-searchable.
 - **`document_ingest` may return `chunks_pending` above 0.** The document is
   searchable; send it again, or use `ingestDocumentFully`, to finish its vectors.
+- **List pages contain whole memories.** A first memory larger than the page
+  budget returns `413 list_budget_too_small` with `required_chars`; retry the
+  same offset with that budget, or use `listAll`.
+- **Remote MCP supports both protocol eras.** The optional function accepts
+  2026-07-28 stateless requests and legacy initialization. Very long remote
+  document ingests can return `chunks_pending`; repeat the same call to resume.
 - **Recall returns different, better-ranked results** for questions, and each row
   carries `source_system` and `external_id`.
 

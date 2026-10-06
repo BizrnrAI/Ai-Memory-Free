@@ -275,3 +275,21 @@ If a client token leaks:
 5. Review affected namespaces and rotate any Vault secrets that client could read.
 6. Search git history and logs for the leaked fragment; never paste the full token
    into an issue or incident note.
+
+## Local Regression Checks
+
+`npm run test:service` exercises the local Edge Function and database, including
+failed replacement writes, missing-chunk repair, concurrent retries, full list
+content, context budgets, byte caps, and authoritative vector reindexing. It
+creates temporary local credentials and removes its test records afterwards.
+Start a disposable local stack first:
+
+```bash
+supabase start --exclude realtime,storage-api,imgproxy,mailpit,postgres-meta,studio,logflare,vector,supavisor
+npm run test:service
+supabase stop
+```
+
+The migration CI job runs these checks against a fresh stack. Hosted deployment
+smoke tests remain separate; local tests do not establish hosted CPU headroom or
+OAuth client compatibility.

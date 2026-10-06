@@ -34,7 +34,8 @@
     "portable": "tsx scripts/portable.ts",
     "document:ingest": "tsx scripts/ingest-document.ts",
     "integrate": "tsx scripts/scaffold-integration.ts",
-    "mcp": "npm --workspace @ai-memory-free/mcp-server run dev"
+    "mcp": "npm --workspace @ai-memory-free/mcp-server run dev",
+    "test:service": "tsx scripts/test-local-service.ts"
   },
   "devDependencies": {
     "@types/node": "^24.19.1",

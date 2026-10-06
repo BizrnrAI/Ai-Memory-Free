@@ -105,6 +105,22 @@ that relied on the old duplicate handling.
 - release version strings are checked against `protocol.ts`, so a bump cannot
   leave one behind
 
+### Review Hardening
+
+- Remote OAuth MCP now uses the official SDK for both the 2026-07-28 stateless
+  protocol and legacy initialization (#21), validates tool arguments, and reuses
+  the client’s batch packing and resumable ingestion.
+- `list` preserves whole memory content; an insufficient first-row budget returns
+  `413 list_budget_too_small` with `required_chars`. `listAll` retries that offset
+  with enough budget.
+- Document replacement stores chunks before retiring prior versions. Idempotent
+  chunk insertion repairs missing chunks and preserves vectors during retries.
+- Reindexing updates the authoritative inline recall vector as well as its
+  profile row; portable memory import respects the configured byte cap.
+- Retries use an explicit action allowlist, and generic call arguments cannot
+  override the selected action. Source-link export pagination includes relation
+  as the final ordering key.
+
 ## 1.3.0 - 2026-08-19
 
 ### Added

@@ -155,8 +155,9 @@ nothing is embedded, so nothing can be missed.
 
 Returns `{namespace, order, memories, next_offset, budget:{max_chars,
 used_chars, truncated}}`. Pass `next_offset` as `offset` until it is `null`. A
-single memory longer than `max_chars` is returned cut to the budget and marked
-`content_truncated:true`; raise `max_chars` to read it whole. Reading does not
+single memory longer than `max_chars` returns `413 list_budget_too_small` with
+`required_chars`; raise `max_chars` and retry the same offset. List pages never
+truncate memory content. The client’s `listAll` raises its budget automatically. Reading does not
 count as access for ranking.
 
 ### `context` — `memory:read` for every requested namespace
@@ -312,7 +313,7 @@ in the same call:
 
 - `supersedes` (uuid): the document this one replaces. It must exist in the same
   namespace (`404 document_not_found`, `409 namespace_mismatch`, checked before
-  anything is written) and is retired once the new one is stored.
+  anything is written) and is retired after the replacement and all its text chunks are stored.
 - `replace_same_title` (boolean): retire every other active document in the
   namespace with the same title.
 

@@ -54,16 +54,26 @@ jobs:
 
   migrations:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: supabase/setup-cli@v3
         with:
           # The version the migrations were last verified with.
           version: 2.117.0
-      - name: Apply every migration to a fresh database
-        run: supabase db start
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Apply every migration to a fresh local stack
+        run: supabase start --exclude realtime,storage-api,imgproxy,mailpit,postgres-meta,studio,logflare,vector,supavisor
       - name: Check the search functions
         run: >-
           psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
           -v ON_ERROR_STOP=1 -f scripts/sql/search-smoke.sql
+      - name: Verify local service regressions
+        run: npm run test:service
+      - name: Stop the local stack
+        if: always()
+        run: supabase stop

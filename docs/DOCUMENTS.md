@@ -35,3 +35,8 @@ afterwards. Retirement is soft: the document remains
 portable and auditable, while its chunks immediately stop participating in search.
 Use `document_list` with `limit` and `offset` until `next_offset` is `null` to
 reconcile the full active corpus without direct database credentials.
+
+Ingest writes all text chunks before retiring a predecessor. Retrying also fills
+any missing chunks, and concurrent identical ingests do not delete each other’s
+rows or overwrite completed vectors. Embedding can continue after retirement
+because the replacement is already searchable by full text.

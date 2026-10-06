@@ -176,9 +176,16 @@ export class MemoryRequestError extends Error {
   }
 }
 
-// Actions that are not safe to send twice: a second copy would add a second
-// event (when it has no external_id) or a second secret version.
-const NOT_RETRYABLE = new Set(['secret_store']);
+// Retry only known repeatable operations. Unrecognised extension actions may
+// have side effects; an HTTP failure does not prove the write never committed.
+const RETRYABLE_ACTIONS = new Set([
+  'health', 'whoami', 'remember', 'remember_batch', 'recall', 'list', 'context',
+  'retire', 'supersede', 'secret_get', 'secret_list', 'secret_retire',
+  'event_list', 'source_upsert', 'source_link', 'source_list', 'link_create',
+  'link_list', 'link_resolve', 'document_ingest', 'document_search',
+  'document_list', 'document_retire', 'maintenance_status', 'embedding_reindex',
+  'portable_export', 'portable_import',
+]);
 // The worker died or is being replaced; nothing is wrong with the request.
 const WORKER_GONE = new Set([546, 502, 503]);
 
@@ -263,10 +270,26 @@ export class MemoryClient {
   async listAll(input: Omit<ListInput, 'offset'> = {}) {
     const memories: MemoryRow[] = [];
     let offset: number | null = 0;
+    let maxChars = input.max_chars ?? 100_000;
     while (offset !== null) {
-      const page = await this.list({ limit: 200, max_chars: 100_000, ...input, offset });
+      let page;
+      try {
+        page = await this.list({ limit: 200, ...input, max_chars: maxChars, offset });
+      } catch (error) {
+        const required = error instanceof MemoryRequestError ? error.body.required_chars : undefined;
+        if (error instanceof MemoryRequestError && error.message === 'list_budget_too_small' &&
+            typeof required === 'number' && required > maxChars && required <= 200_000) {
+          maxChars = required;
+          continue;
+        }
+        throw error;
+      }
+      if (page.memories.some((row) => (row as MemoryRow & { content_truncated?: boolean }).content_truncated)) {
+        throw new Error('memory list returned truncated content');
+      }
+      if (page.next_offset !== null && page.next_offset <= offset) throw new Error('memory list did not advance');
       memories.push(...page.memories);
-      offset = page.memories.length > 0 ? page.next_offset : null;
+      offset = page.next_offset;
     }
     return memories;
   }
@@ -451,12 +474,12 @@ export class MemoryClient {
   }
 
   async call<T>(action: string, input: Record<string, unknown> = {}): Promise<T> {
-    return await this.request<T>({ action, ...input });
+    return await this.request<T>({ ...input, action });
   }
 
   private async request<T>(body: Record<string, unknown>): Promise<T> {
     const action = typeof body.action === 'string' ? body.action : '';
-    const retryable = !NOT_RETRYABLE.has(action) && !(action === 'event_append' && !body.external_id);
+    const retryable = RETRYABLE_ACTIONS.has(action) || (action === 'event_append' && Boolean(body.external_id));
     for (let attempt = 0; ; attempt += 1) {
       try {
         return await this.requestOnce<T>(body);

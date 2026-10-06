@@ -5,6 +5,8 @@
     "test": "deno test supabase/functions/memory/lib_test.ts supabase/functions/mcp/lib_test.ts"
   },
   "imports": {
-    "@supabase/supabase-js": "jsr:@supabase/supabase-js@^2.117.2"
+    "@supabase/supabase-js": "jsr:@supabase/supabase-js@^2.117.2",
+    "@modelcontextprotocol/server": "npm:@modelcontextprotocol/server@2.3.1",
+    "@modelcontextprotocol/server/validators/cf-worker": "npm:@modelcontextprotocol/server@2.3.1/validators/cf-worker"
   }
 }

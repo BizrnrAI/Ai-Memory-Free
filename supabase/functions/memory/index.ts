@@ -27,6 +27,7 @@ import { createGteSmallAdapter, GTE_SMALL_PROFILE } from './embedding.ts';
 import {
   ACTIONS,
   boundContext,
+  boundList,
   contextCharacterBudget,
   isPortableResource,
   MODULES,
@@ -504,7 +505,10 @@ async function handleList(context: RequestContext, input: RequestBody) {
   if (error) throw new ApiError('memory_list_failed', 500);
 
   const rows = data ?? [];
-  const page = boundContext(rows.slice(0, limit), maxChars);
+  const page = boundList(rows.slice(0, limit), maxChars);
+  if (page.requiredChars !== null) {
+    throw new ApiError('list_budget_too_small', 413, { required_chars: page.requiredChars, max_chars: maxChars });
+  }
   const more = rows.length > limit || page.truncated;
   return json({
     ok: true,
@@ -792,6 +796,20 @@ async function ingestDocument(context: RequestContext, input: RequestBody, optio
     document = stood;
   }
 
+  // One request can only embed so much (see the embedding budget in lib.ts), and
+  // a document is usually more than that. So: write every chunk first, without a
+  // vector — full-text search finds it at once — then embed as many as this
+  // request can afford. Sending the same document again embeds the next batch,
+  // until `chunks_pending` reaches 0. A request that dies halfway loses nothing.
+  const chunkRows = chunks.map((chunk, index) => ({
+    document_id: documentId, namespace, chunk_index: index, content: chunk,
+  }));
+  const chunkWrite = await db.from('memory_document_chunks').upsert(chunkRows, {
+    onConflict: 'document_id,chunk_index', ignoreDuplicates: true,
+  }).select('id');
+  if (chunkWrite.error) throw new ApiError('document_chunk_write_failed', 500);
+  const chunksCreated = chunkWrite.data?.length ?? 0;
+
   // Replacing in the same call: the corrected version goes in and the version
   // it corrects stops competing in search, so two never rank against each other.
   const retired: string[] = [];
@@ -805,27 +823,6 @@ async function ingestDocument(context: RequestContext, input: RequestBody, optio
       .eq('namespace', namespace).eq('title', title).eq('is_active', true).neq('id', documentId).select('id');
     if (others.error) throw new ApiError('document_retire_failed', 500);
     for (const row of others.data ?? []) if (!retired.includes(row.id)) retired.push(row.id);
-  }
-
-  // One request can only embed so much (see the embedding budget in lib.ts), and
-  // a document is usually more than that. So: write every chunk first, without a
-  // vector — full-text search finds it at once — then embed as many as this
-  // request can afford. Sending the same document again embeds the next batch,
-  // until `chunks_pending` reaches 0. A request that dies halfway loses nothing.
-  let chunksCreated = 0;
-  const existingChunks = await db.from('memory_document_chunks')
-    .select('*', { count: 'exact', head: true }).eq('document_id', documentId);
-  if (existingChunks.error) throw new ApiError('document_chunk_write_failed', 500);
-  if ((existingChunks.count ?? 0) === 0) {
-    const chunkRows = chunks.map((chunk, index) => ({
-      document_id: documentId, namespace, chunk_index: index, content: chunk,
-    }));
-    const chunkWrite = await db.from('memory_document_chunks').insert(chunkRows);
-    if (chunkWrite.error) {
-      if (created) await db.from('memory_documents').delete().eq('id', documentId);
-      throw new ApiError('document_chunk_write_failed', 500);
-    }
-    chunksCreated = chunkRows.length;
   }
 
   // With embeddings off, or for a retired document, nothing is embedded or waiting.
@@ -1046,6 +1043,8 @@ async function handleEmbeddingReindex(context: RequestContext, input: RequestBod
       is_active: true,
     }, { onConflict: 'memory_id,profile' });
     if (write.error) throw new ApiError('embedding_reindex_write_failed', 500);
+    const inline = await db.from('memories').update({ embedding }).eq('id', memory.id);
+    if (inline.error) throw new ApiError('embedding_reindex_write_failed', 500);
     processed += 1;
   }
   const exhausted = (data?.length ?? 0) < limit && processed === (data?.length ?? 0);
@@ -1068,7 +1067,7 @@ async function handlePortableExport(context: RequestContext, input: RequestBody)
     const result = await db.from('memory_source_links')
       .select('source_id, memory_id, relation, created_at, source:memory_sources!inner(namespace)')
       .eq('source.namespace', namespace)
-      .order('created_at').order('source_id').order('memory_id').range(offset, offset + limit - 1);
+      .order('created_at').order('source_id').order('memory_id').order('relation').range(offset, offset + limit - 1);
     data = result.data;
     error = result.error;
   } else if (input.resource === 'supersessions') {
@@ -1116,9 +1115,10 @@ async function handlePortableImport(context: RequestContext, input: RequestBody)
   if (!Array.isArray(input.records) || input.records.length < 1 || input.records.length > 20) {
     throw new ApiError('records_must_contain_1_to_20_items', 400);
   }
+  if (input.records.some((record) => !isPlainObject(record))) throw new ApiError('records_must_be_objects', 400);
   if (input.resource === 'memories') {
     // Refuse a page this request cannot embed before importing any of it.
-    requireEmbedBudget(context, input.records.map((record) => requiredString(record.content, 'content', 1, MAX_CONTENT_CHARS)));
+    requireEmbedBudget(context, input.records.map((record) => memoryContent(record?.content)));
   }
   let imported = 0;
   let skipped = 0;
@@ -1140,7 +1140,7 @@ async function importPortableRecord(
 ) {
   assertNoSecretMaterial(record);
   if (resource === 'memories') {
-    const content = requiredString(record.content, 'content', 1, MAX_CONTENT_CHARS);
+    const content = memoryContent(record.content);
     // A page that is sent again must not pay to embed what it already imported.
     const already = await db.from('memories').select('id')
       .eq('namespace', namespace).eq('content_hash', await sha256Hex(content)).maybeSingle();

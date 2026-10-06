@@ -45,24 +45,33 @@ Supabase Auth is the authorization server; the MCP function is only the protecte
 resource and protocol adapter. Never replace this flow with a shared remote bearer
 token.
 
-## 2026-07-28 Specification Posture
+## Protocol Compatibility
 
-The MCP 2026-07-28 revision was audited against this function on 2026-08-19:
+The remote function uses the official SDK’s `createMcpHandler`, with a fresh
+server and authenticated memory client for each request. It supports the
+2026-07-28 stateless protocol (`server/discover`, per-request metadata, required
+HTTP headers, result types, and cache hints) and stateless legacy `initialize`
+requests on the same endpoint. Legacy responses may use Streamable HTTP SSE;
+there is no separate deprecated HTTP+SSE endpoint or server-side session store.
 
-- **No SSE exposure.** The function is a sessionless JSON POST endpoint; it never
-  offered the deprecated HTTP+SSE transport, so that deprecation requires no change.
-- **No Dynamic Client Registration surface.** The 2026-07-28 move from DCR to Client
-  ID Metadata Documents (CIMD) is an authorization-server and client concern. This
-  function is a protected resource only; client registration happens with Supabase
-  Auth, so register clients there using whichever mechanism it currently supports.
-- **RFC 9207 issuer validation** is performed by the OAuth client during the
-  authorization flow, not by the resource. This function already advertises
-  `authorization_servers` in its protected-resource metadata, which is the resource's
-  half of the mix-up defense.
-- **Wire protocol** remains 2025-06-18. Clients on newer revisions negotiate down
-  automatically; the 2026-era stateless request/response model matches this
-  function's existing sessionless design and can be adopted later without
-  architectural change.
+OAuth verification runs before the SDK handles a request. Tool arguments are
+validated against their schemas, and cannot override the selected HTTPS action.
+Remote tools reuse the TypeScript client’s batch packing, bounded retries, and
+resumable document ingestion. A remote ingest performs at most 24 successful
+steps and returns `chunks_pending` if more remain; send the same tool call again
+to resume. Actual upstream attempts, including health and retries, are capped at
+28 to stay within Supabase’s 30 nested-invocation limit. Exhausting that budget
+returns `remote_request_budget_exceeded`; retry the original operation. Vault
+tools remain absent. A token that expires
+during a tool call receives the same 401 resource-metadata challenge.
+
+The function remains a protected resource. Client registration and RFC 9207
+issuer validation belong to the authorization server and OAuth client.
+
+Compatibility is covered by Deno tests for modern discovery and tool calls,
+legacy initialization, unsupported versions, required headers, OAuth-only
+identity, input validation, and document resumption. Hosted OAuth client testing
+remains a deployment check.
 
 Official references:
 

@@ -21,7 +21,7 @@ import {
   utf8ByteLength,
   vectorCoverage,
 } from './lib.ts';
-import { boundContext, contextCharacterBudget, isPortableResource, splitDocumentText } from './protocol.ts';
+import { boundList, boundContext, contextCharacterBudget, isPortableResource, splitDocumentText } from './protocol.ts';
 
 Deno.test('scoped permissions and namespaces fail closed', () => {
   assert(hasPermission(['memory:admin'], 'memory:read'));
@@ -240,4 +240,18 @@ Deno.test('the server key prefers the new Supabase secret keys and falls back to
 Deno.test('a Supabase secret API key is caught, a publishable one is not', () => {
   assert(containsLikelySecret('key: sb_secret_' + 'A1b2C3d4E5f6G7h8I9j0K1l2'));
   assert(!containsLikelySecret('key: sb_publishable_' + 'A1b2C3d4E5f6G7h8I9j0K1l2'));
+});
+
+Deno.test('list pages never discard the tail of an oversized memory', () => {
+  const rows = [{ content: 'a'.repeat(1500) }, { content: 'b'.repeat(700) }];
+  const tooSmall = boundList(rows, 1000);
+  assertEquals(tooSmall.rows.length, 0);
+  assertEquals(tooSmall.requiredChars, 1500);
+  const first = boundList(rows, 1600);
+  assertEquals(first.rows.length, 1);
+  assertEquals(first.rows[0].content.length, 1500);
+  assertEquals(first.truncated, true);
+  const second = boundList(rows.slice(first.rows.length), 1600);
+  assertEquals(second.rows[0].content.length, 700);
+  assertEquals(second.truncated, false);
 });
