@@ -29,10 +29,17 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
   if (!ready) throw new Error('local memory runtime did not become ready; start Supabase first');
+  // The local stack's publishable key (the legacy name is the anon key): the
+  // OAuth test signs a throwaway user in with it.
+  const status = spawnSync('supabase', ['status', '-o', 'json'], { encoding: 'utf8' });
+  const keys = JSON.parse(status.stdout || '{}') as { PUBLISHABLE_KEY?: string; ANON_KEY?: string };
+  const publishableKey = keys.PUBLISHABLE_KEY ?? keys.ANON_KEY;
+  if (!publishableKey) throw new Error('supabase status did not report the local publishable key');
   const tests = spawnSync(process.execPath, ['--import', 'tsx', '--test', 'tests/service.test.ts'], {
     stdio: 'inherit', env: {
       ...process.env, MEMORY_TEST_API_URL: 'http://127.0.0.1:54321/functions/v1/memory',
       MEMORY_TEST_TOKEN: token, MEMORY_TEST_DB_CONTAINER: 'supabase_db_ai-memory-free',
+      MEMORY_TEST_PUBLISHABLE_KEY: publishableKey,
     },
   });
   process.exitCode = tests.status ?? 1;

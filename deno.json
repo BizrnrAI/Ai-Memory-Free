@@ -1,8 +1,8 @@
 {
   "nodeModulesDir": "auto",
   "tasks": {
-    "check": "deno check supabase/functions/memory/index.ts supabase/functions/memory/lib.ts supabase/functions/memory/protocol.ts supabase/functions/memory/embedding.ts supabase/functions/memory/lib_test.ts supabase/functions/mcp/index.ts supabase/functions/mcp/lib.ts supabase/functions/mcp/lib_test.ts",
-    "test": "deno test supabase/functions/memory/lib_test.ts supabase/functions/mcp/lib_test.ts"
+    "check": "deno check supabase/functions/memory/index.ts supabase/functions/memory/lib.ts supabase/functions/memory/protocol.ts supabase/functions/memory/embedding.ts supabase/functions/memory/auth.ts supabase/functions/memory/lib_test.ts supabase/functions/memory/auth_test.ts supabase/functions/mcp/index.ts supabase/functions/mcp/lib.ts supabase/functions/mcp/lib_test.ts",
+    "test": "deno test supabase/functions/memory/lib_test.ts supabase/functions/memory/auth_test.ts supabase/functions/mcp/lib_test.ts"
   },
   "imports": {
     "@supabase/supabase-js": "jsr:@supabase/supabase-js@^2.117.2",

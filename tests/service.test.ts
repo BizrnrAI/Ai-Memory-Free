@@ -1,14 +1,29 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { MemoryClient, MemoryRequestError } from '../packages/client/src/index.js';
+import { RELEASE_VERSION } from '../supabase/functions/memory/protocol.js';
 
 // Opt-in integration regression test, restricted to a local disposable stack.
-// Set MEMORY_TEST_API_URL, MEMORY_TEST_TOKEN and MEMORY_TEST_DB_CONTAINER.
+// Set MEMORY_TEST_API_URL, MEMORY_TEST_TOKEN and MEMORY_TEST_DB_CONTAINER; the
+// OAuth test also needs MEMORY_TEST_PUBLISHABLE_KEY, the local stack's own.
 const apiUrl = process.env.MEMORY_TEST_API_URL;
 const token = process.env.MEMORY_TEST_TOKEN;
 const container = process.env.MEMORY_TEST_DB_CONTAINER;
+const publishableKey = process.env.MEMORY_TEST_PUBLISHABLE_KEY;
+
+const sql = (query: string) => execFileSync('docker', [
+  'exec', '-i', container!, 'psql', '-U', 'postgres', '-At', '-v', 'ON_ERROR_STOP=1', '-c', query,
+], { encoding: 'utf8' }).trim();
+
+// Asserts a request failed with this stable code and HTTP status.
+const failsWith = (code: string, status: number) => (error: unknown) => {
+  assert(error instanceof MemoryRequestError);
+  assert.equal(error.message, code);
+  assert.equal(error.status, status);
+  return true;
+};
 
 test('local service preserves whole lists, replacement searchability, and recall vectors', {
   skip: !apiUrl || !token || !container,
@@ -18,12 +33,9 @@ test('local service preserves whole lists, replacement searchability, and recall
   const namespace = `review-${randomUUID()}`;
   const vectorNamespace = `${namespace}-vectors`;
   const client = new MemoryClient({ apiUrl, token });
-  const sql = (query: string) => execFileSync('docker', [
-    'exec', '-i', container!, 'psql', '-U', 'postgres', '-At', '-v', 'ON_ERROR_STOP=1', '-c', query,
-  ], { encoding: 'utf8' }).trim();
   try {
     const health = await client.health();
-    assert.equal(health.version, '1.4.0');
+    assert.equal(health.version, RELEASE_VERSION);
     const content = 'Searchable standing deployment guidance. '.repeat(40).trim();
     await client.remember({ namespace, content, importance: 1 });
     await client.remember({ namespace, content: 'A short second fact.' });
@@ -98,10 +110,8 @@ test('local Vault keeps secrets encrypted, scoped, discoverable and coherent dur
   const namespace = `vault-review-${randomUUID()}`;
   const secondNamespace = `${namespace}:part`;
   const client = new MemoryClient({ apiUrl, token });
-  const sql = (query: string) => execFileSync('docker', ['exec', '-i', container!, 'psql', '-U', 'postgres', '-At', '-v', 'ON_ERROR_STOP=1', '-c', query], { encoding: 'utf8' }).trim();
   const quote = (value: string) => `'${value.replaceAll("'", "''")}'`;
   const caller = `test-caller-${randomUUID()}`;
-  const { createHash } = await import('node:crypto');
   const callerHash = createHash('sha256').update(caller).digest('hex');
   const scoped = new MemoryClient({ apiUrl, token: caller });
   try {
@@ -173,5 +183,117 @@ test('local Vault keeps secrets encrypted, scoped, discoverable and coherent dur
     sql(`delete from vault.secrets where id in (select vault_secret_id from memory_secrets where namespace in ('${namespace}','${secondNamespace}'));
       delete from memory_secrets where namespace in ('${namespace}','${secondNamespace}');
       delete from memory_clients where token_hash='${callerHash}';`);
+  }
+});
+
+test('a credential lookup that fails is a retryable 503; only a lookup that answers is a 401', {
+  skip: !apiUrl || !token || !container,
+  timeout: 120_000,
+}, async () => {
+  assert(['localhost', '127.0.0.1', '[::1]'].includes(new URL(apiUrl!).hostname));
+  const name = `auth-review-${randomUUID()}`;
+  const caller = `test-caller-${randomUUID()}`;
+  const callerHash = createHash('sha256').update(caller).digest('hex');
+  let attempts = 0;
+  const counting: typeof fetch = async (input, init) => { attempts += 1; return await fetch(input, init); };
+  const admin = new MemoryClient({ apiUrl, token });
+  const scoped = new MemoryClient({ apiUrl, token: caller, fetchImpl: counting });
+  const unknown = new MemoryClient({ apiUrl, token: `unknown-${randomUUID()}`, fetchImpl: counting });
+  const lastUsed = () => sql(`select last_used_at is not null from memory_clients where token_hash='${callerHash}'`);
+  try {
+    sql(`insert into memory_clients(name,token_hash,token_prefix,allowed_namespaces,permissions) values ('${name}','${callerHash}','test-only',array['${name}'],array['memory:read'])`);
+    assert.equal((await scoped.whoAmI()).client.auth_mode, 'scoped');
+    assert.equal(lastUsed(), 't');
+
+    // Recording last use fails: the token is still valid, and the write is simply missing.
+    sql(`update memory_clients set last_used_at=null where token_hash='${callerHash}';
+      create function public.review_fail_last_use() returns trigger language plpgsql as $$
+      begin raise exception 'test last-use failure'; end $$;
+      create trigger review_fail_last_use before update on public.memory_clients for each row
+      when (old.token_hash = '${callerHash}') execute function public.review_fail_last_use();`);
+    assert.equal((await scoped.whoAmI()).client.name, name);
+    assert.equal(lastUsed(), 'f');
+    sql('drop trigger review_fail_last_use on public.memory_clients; drop function public.review_fail_last_use();');
+
+    // The lookup itself fails. That says nothing about a token, valid or not:
+    // both get a 503 the client retries, and the bootstrap token is unaffected.
+    sql('revoke select on public.memory_clients from service_role');
+    attempts = 0;
+    await assert.rejects(scoped.whoAmI(), failsWith('auth_unavailable', 503));
+    assert.equal(attempts, 3);
+    await assert.rejects(unknown.whoAmI(), failsWith('auth_unavailable', 503));
+    assert.equal((await admin.health()).auth_mode, 'bootstrap');
+    sql('grant select on public.memory_clients to service_role');
+    assert.equal((await scoped.whoAmI()).client.auth_mode, 'scoped');
+
+    // A lookup that answers is a verdict, and a verdict is not retried.
+    attempts = 0;
+    await assert.rejects(unknown.whoAmI(), failsWith('unauthorized', 401));
+    assert.equal(attempts, 1);
+    for (const state of ["expires_at=now()-interval '1 second'", 'expires_at=null, revoked_at=now()']) {
+      sql(`update memory_clients set ${state} where token_hash='${callerHash}'`);
+      attempts = 0;
+      await assert.rejects(scoped.whoAmI(), failsWith('unauthorized', 401));
+      assert.equal(attempts, 1);
+    }
+  } finally {
+    sql(`drop trigger if exists review_fail_last_use on public.memory_clients;
+      drop function if exists public.review_fail_last_use();
+      grant select on public.memory_clients to service_role;
+      delete from memory_clients where token_hash='${callerHash}';`);
+  }
+});
+
+test('an OAuth grant follows the same rule: a failed grants query is 503, a missing or revoked grant is 401', {
+  skip: !apiUrl || !token || !container || !publishableKey,
+  timeout: 120_000,
+}, async () => {
+  assert(['localhost', '127.0.0.1', '[::1]'].includes(new URL(apiUrl!).hostname));
+  const name = `oauth-review-${randomUUID()}`;
+  // A throwaway user in the local stack's own Auth server, removed below.
+  const signup = await fetch(new URL('/auth/v1/signup', apiUrl), {
+    method: 'POST', headers: { apikey: publishableKey!, 'content-type': 'application/json' },
+    body: JSON.stringify({ email: `${name}@example.com`, password: randomUUID() }),
+  });
+  const session = await signup.json() as { access_token?: string; user?: { id?: string } };
+  const userId = session.user?.id;
+  assert(session.access_token && userId && /^[0-9a-f-]{36}$/.test(userId), `local sign-up returned ${signup.status} without a session`);
+  let attempts = 0;
+  const counting: typeof fetch = async (input, init) => { attempts += 1; return await fetch(input, init); };
+  const oauth = new MemoryClient({ apiUrl, token: session.access_token, fetchImpl: counting });
+  const lastUsed = () => sql(`select last_used_at is not null from memory_oauth_grants where user_id='${userId}'`);
+  try {
+    // Signed in, but nothing granted: the grants query answered, so this is a verdict.
+    await assert.rejects(oauth.health(), failsWith('unauthorized', 401));
+    assert.equal(attempts, 1);
+    sql(`insert into memory_oauth_grants(user_id,name,allowed_namespaces,permissions) values ('${userId}','${name}',array['${name}'],array['memory:read'])`);
+    assert.equal((await oauth.health()).auth_mode, 'oauth');
+    assert.equal(lastUsed(), 't');
+
+    sql(`update memory_oauth_grants set last_used_at=null where user_id='${userId}';
+      create function public.review_fail_grant_use() returns trigger language plpgsql as $$
+      begin raise exception 'test last-use failure'; end $$;
+      create trigger review_fail_grant_use before update on public.memory_oauth_grants for each row
+      when (old.user_id = '${userId}') execute function public.review_fail_grant_use();`);
+    assert.equal((await oauth.whoAmI()).client.name, name);
+    assert.equal(lastUsed(), 'f');
+    sql('drop trigger review_fail_grant_use on public.memory_oauth_grants; drop function public.review_fail_grant_use();');
+
+    sql('revoke select on public.memory_oauth_grants from service_role');
+    attempts = 0;
+    await assert.rejects(oauth.health(), failsWith('auth_unavailable', 503));
+    assert.equal(attempts, 3);
+    sql('grant select on public.memory_oauth_grants to service_role');
+    assert.equal((await oauth.health()).auth_mode, 'oauth');
+
+    sql(`update memory_oauth_grants set revoked_at=now() where user_id='${userId}'`);
+    attempts = 0;
+    await assert.rejects(oauth.health(), failsWith('unauthorized', 401));
+    assert.equal(attempts, 1);
+  } finally {
+    sql(`drop trigger if exists review_fail_grant_use on public.memory_oauth_grants;
+      drop function if exists public.review_fail_grant_use();
+      grant select on public.memory_oauth_grants to service_role;
+      delete from auth.users where id='${userId}';`);
   }
 });

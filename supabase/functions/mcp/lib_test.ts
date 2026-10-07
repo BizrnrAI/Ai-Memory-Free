@@ -9,6 +9,7 @@ Deno.test('remote MCP accepts only the OAuth memory auth mode', () => {
 
 
 import { createRemoteMcpHandler } from './handler.ts';
+import { RELEASE_VERSION } from '../memory/protocol.ts';
 
 function assert(value: unknown, message = 'assertion failed'): asserts value {
   if (!value) throw new Error(message);
@@ -76,7 +77,7 @@ Deno.test('remote MCP serves modern discovery, cache hints, and legacy initializ
     protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'old-client', version: '1' },
   }, false)));
   assert(legacy.result.protocolVersion === '2025-06-18', JSON.stringify(legacy));
-  assert(legacy.result.serverInfo.version === '1.4.0');
+  assert(legacy.result.serverInfo.version === RELEASE_VERSION);
 });
 
 Deno.test('remote MCP rejects scoped tokens and advertises OAuth metadata', async () => {
@@ -120,6 +121,24 @@ Deno.test('remote MCP returns an OAuth challenge when authorization expires duri
   const result = await handler(request('tools/call', { name: 'memory_recall', arguments: { query: 'q' } }));
   assert(result.status === 401);
   await result.body?.cancel();
+});
+
+Deno.test('remote MCP answers 503, not an OAuth challenge, when the token could not be checked', async () => {
+  let calls = 0;
+  const handler = createRemoteMcpHandler({
+    memoryApiUrl: 'https://memory.example.test', authorizationServer: 'https://auth.example.test',
+    resourceUrl: 'https://mcp.example.test',
+    fetchImpl: async () => {
+      calls += 1;
+      return Response.json({ ok: false, error: 'auth_unavailable' }, { status: 503 });
+    },
+  });
+  const result = await handler(request('tools/list'));
+  assert(result.status === 503);
+  // A challenge would make the client discard a token that is still good.
+  assert(!result.headers.has('www-authenticate'));
+  assert((await result.json()).error === 'memory_service_unavailable');
+  assert(calls === 3);
 });
 
 Deno.test('remote MCP bounds long ingests and reports remaining work for the next tool call', async () => {

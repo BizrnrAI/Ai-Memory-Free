@@ -20,7 +20,11 @@ Content-Type: application/json
 - `action` is required (defaults to `health` when the body omits it).
 - `protocol_version` is optional; if present it must be `"1"` or the request
   fails with `unsupported_protocol_version` (409).
-- Non-POST methods receive 405. Unauthenticated requests receive 401.
+- Non-POST methods receive 405. A request with no token, an unknown token, or
+  a revoked or expired one receives 401 `unauthorized`.
+- If the service could not look the token up at all, it answers 503
+  `auth_unavailable`. That says nothing about the token: retry the request and
+  keep the credential.
 - Success responses are `{"ok":true, ...}`. Failures are
   `{"ok":false,"error":"<stable_code>"}` with a matching HTTP status; internal
   errors add a `request_id` and never leak database detail.
@@ -412,13 +416,18 @@ built-in embedding model is what uses that CPU, so the service budgets it:
 worker, and a write that did land is recognised as a duplicate without being
 embedded again. The same goes for a 502 or 503 while a worker is being replaced.
 The bundled TypeScript client and the remote MCP function retry twice on their
-own. The numbers
+own. A 503 `auth_unavailable` or `rate_limit_unavailable` was answered before
+the action ran, so nothing was written and it is safe to send again for every
+action; the bundled client retries it for the same actions as a 546. The numbers
 behind the default, and the settings that change it, are in
 [RETRIEVAL.md](RETRIEVAL.md) and [OPERATIONS.md](OPERATIONS.md#settings).
 
 ## Error Codes
 
-Errors are stable machine-readable strings, for example `unauthorized` (401),
+Errors are stable machine-readable strings, for example `unauthorized` (401:
+no token, an unknown token, or a revoked or expired one), `auth_unavailable`
+(503: the token could not be looked up, which is not a verdict on it; retry),
+`rate_limit_unavailable` (503: the rate limit could not be checked; retry),
 `forbidden` (403, permission or namespace denied), `unknown_action` (400),
 `unsupported_protocol_version` (409), `namespace_mismatch` (409),
 `rate_limited` (429), validation codes such as

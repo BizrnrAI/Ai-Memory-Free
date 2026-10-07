@@ -32,6 +32,13 @@ lookup is appropriate. The database cannot reconstruct the bearer token.
 Each `memory_clients` row supports explicit namespaces, permissions, expiry,
 immediate revocation, a safe display prefix, and last-use metadata.
 
+A token is accepted only after its lookup completed and returned an active row.
+If the lookup itself fails, the request is refused with 503 `auth_unavailable`
+instead of 401, so a caller retries without discarding a valid token; nothing
+is ever authenticated without a completed lookup. Last use is recorded
+best-effort: a failed write is logged and does not reject the request, so
+`last_used_at` can be older than the real last use.
+
 ### Platform Secrets: Encrypted With Supabase Vault
 
 Recoverable vendor API keys and platform secrets are stored through Supabase Vault,

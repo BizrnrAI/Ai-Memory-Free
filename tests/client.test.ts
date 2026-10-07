@@ -136,6 +136,40 @@ test('client never repeats a write that is not safe to send twice', async () => 
   assert.equal(attempts, 2);
 });
 
+test('client retries auth_unavailable and reports it by code; unauthorized is final', async () => {
+  const unavailable = () => new Response(JSON.stringify({ ok: false, error: 'auth_unavailable' }), { status: 503 });
+  let calls = 0;
+  const recovering: typeof fetch = async () => {
+    calls += 1;
+    return calls < 3 ? unavailable() : new Response(JSON.stringify({ ok: true, results: [] }));
+  };
+  await new MemoryClient({ apiUrl: 'https://memory.example.test', token: 't', fetchImpl: recovering }).recall({ query: 'q' });
+  assert.equal(calls, 3);
+
+  calls = 0;
+  const down: typeof fetch = async () => { calls += 1; return unavailable(); };
+  await assert.rejects(new MemoryClient({ apiUrl: 'https://memory.example.test', token: 't', fetchImpl: down }).recall({ query: 'q' }), (error: unknown) => {
+    assert.ok(error instanceof MemoryRequestError);
+    assert.equal(error.message, 'auth_unavailable');
+    assert.equal(error.status, 503);
+    return true;
+  });
+  assert.equal(calls, 3);
+
+  calls = 0;
+  const refusing: typeof fetch = async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ ok: false, error: 'unauthorized' }), { status: 401 });
+  };
+  await assert.rejects(new MemoryClient({ apiUrl: 'https://memory.example.test', token: 't', fetchImpl: refusing }).recall({ query: 'q' }), (error: unknown) => {
+    assert.ok(error instanceof MemoryRequestError);
+    assert.equal(error.message, 'unauthorized');
+    assert.equal(error.status, 401);
+    return true;
+  });
+  assert.equal(calls, 1);
+});
+
 test('batches are packed to the embedding budget the service reports', () => {
   const limits = { embed_chunk_chars: 1800, embed_chunks_per_text: 2, embed_cost_per_request: 6000, embed_cost_per_run: 1200 };
   const items = ['a'.repeat(1000), 'b'.repeat(1000), 'c'.repeat(1000), 'd'.repeat(50_000), 'e'.repeat(10)];
