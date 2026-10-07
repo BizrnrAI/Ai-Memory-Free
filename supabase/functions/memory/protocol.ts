@@ -1,4 +1,4 @@
-export const RELEASE_VERSION = '1.4.0';
+export const RELEASE_VERSION = '1.4.1';
 export const PROTOCOL_VERSION = '1';
 export const PORTABLE_FORMAT = 'ai-memory-free-portable';
 export const PORTABLE_VERSION = 1;

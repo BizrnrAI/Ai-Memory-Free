@@ -1,6 +1,6 @@
 # Ai-Memory-Free
 
-**Current release: v1.4.0 — protocol v1, eight independently discoverable modules.**
+**Current release: v1.4.1 — protocol v1, eight independently discoverable modules.**
 Release notes: [CHANGELOG.md](CHANGELOG.md) and
 [GitHub releases](https://github.com/BizrnrAI/Ai-Memory-Free/releases). Upgrading
 from v1.3: [docs/UPGRADE_V1_4.md](docs/UPGRADE_V1_4.md).

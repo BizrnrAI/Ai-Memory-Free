@@ -39,7 +39,7 @@ repository settings that an owner must apply after merge.
 7. Protect `main`: require pull requests and all Check workflow jobs.
 8. Create a social preview that leads with “Free AI Memory” and includes a small
    “KristianPeter.com” creator attribution.
-9. Publish a `v1.4.0` GitHub release from the reviewed commit with migration notes.
+9. Publish a `v1.4.1` GitHub release from the reviewed commit with migration notes.
 10. Test the public experience in a signed-out browser: clone, every documentation
     link, raw `llms.txt`, issue templates, and license detection.
 

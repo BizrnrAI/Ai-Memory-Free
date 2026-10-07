@@ -3,7 +3,9 @@
 Notable changes are documented here. Versions follow semantic versioning after the
 first public release.
 
-## Unreleased
+## 1.4.1 - 2026-10-06
+
+No migration. Redeploy the `memory` function, and `mcp` if you use remote MCP.
 
 ### Fixed
 

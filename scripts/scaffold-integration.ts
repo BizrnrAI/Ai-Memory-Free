@@ -142,7 +142,7 @@ Copy \`mcp.json.example\` into the configuration format used by your AI client, 
 At session start, call \`memory_health\` and use its protocol/module capabilities,
 then read what the project already knows with \`memory_list\` (see the policy).
 Use \`memory_context\` when work spans explicitly granted namespaces. The backend is
-v1.4.0 but protocol v1 remains compatible with older clients.
+v1.4.1 but protocol v1 remains compatible with older clients.
 
 ## Agent behavior
 
