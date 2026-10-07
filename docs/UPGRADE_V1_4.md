@@ -26,7 +26,7 @@ untouched; nothing needs re-embedding.
    supabase functions deploy mcp --no-verify-jwt   # only if you use remote MCP
    ```
 
-3. Check `health`. It should report `"version": "1.4.0"`, a `limits` object, and
+3. Check `health`. It should report `"version": "1.4.1"`, a `limits` object, and
    `"server_key"`. Then run the write-and-recall smoke test in
    [OPERATIONS.md](OPERATIONS.md#smoke-test-the-effect).
 

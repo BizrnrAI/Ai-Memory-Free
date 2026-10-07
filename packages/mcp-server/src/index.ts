@@ -9,7 +9,7 @@ const client = new MemoryClient({ allowInsecureHttp: process.env.MEMORY_ALLOW_IN
 function buildServer() {
   const server = new McpServer({
     name: 'ai-memory-free',
-    version: '1.4.0',
+    version: '1.4.1',
   });
 
   server.registerTool(

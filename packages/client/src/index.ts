@@ -187,8 +187,11 @@ export type MemoryClientOptions = {
    * Extra attempts after an HTTP 546, 502 or 503. Hosted Supabase answers 546
    * when the worker serving the request ran out of CPU, and 502/503 while a
    * worker is being replaced; the next request gets a fresh worker, so trying
-   * again is the remedy. Only requests that are safe to repeat are retried.
-   * Default 2.
+   * again is the remedy. The service itself answers 503 when it could not
+   * check the request: `auth_unavailable` (the token lookup failed, which says
+   * nothing about the token) and `rate_limit_unavailable`. A 401 is a verdict
+   * on the token and is never retried. Only requests that are safe to repeat
+   * are retried. Default 2.
    */
   retries?: number;
 };
@@ -215,8 +218,11 @@ const RETRYABLE_ACTIONS = new Set([
   'document_list', 'document_retire', 'maintenance_status', 'embedding_reindex',
   'portable_export', 'portable_import',
 ]);
-// The worker died or is being replaced; nothing is wrong with the request.
-const WORKER_GONE = new Set([546, 502, 503]);
+// Nothing is wrong with the request: the worker died or is being replaced, or
+// the service answered 503 because it could not check the request
+// (`auth_unavailable`, `rate_limit_unavailable`). The retry is by status, so a
+// new 503 code needs no entry here.
+const RETRYABLE_STATUSES = new Set([546, 502, 503]);
 
 export class MemoryClient {
   private readonly apiUrl: string;
@@ -553,8 +559,8 @@ export class MemoryClient {
       try {
         return await this.requestOnce<T>(body);
       } catch (error) {
-        const workerGone = error instanceof MemoryRequestError && WORKER_GONE.has(error.status);
-        if (!workerGone || !retryable || attempt >= this.retries) throw error;
+        const transient = error instanceof MemoryRequestError && RETRYABLE_STATUSES.has(error.status);
+        if (!transient || !retryable || attempt >= this.retries) throw error;
         await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
       }
     }

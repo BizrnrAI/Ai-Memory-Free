@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
+import { AUTH_FAILURE_STATUS, createAuthenticator, type Caller } from './auth.ts';
 import {
-  bearerToken,
   canonicalSecretName,
   chunksPerText,
   containsLikelySecret,
@@ -18,7 +18,6 @@ import {
   RequestInputError,
   resolveSupabaseServerKey,
   sha256Hex,
-  timingSafeEqualHex,
   utf8ByteLength,
   vectorCoverage,
   type MemoryKind,
@@ -115,17 +114,6 @@ type RequestBody = {
   name_prefix?: string;
 };
 
-type Caller = {
-  id: string | null;
-  name: string;
-  tokenPrefix: string;
-  allowedNamespaces: string[];
-  permissions: string[];
-  expiresAt: string | null;
-  authMode: 'bootstrap' | 'scoped' | 'oauth';
-  dbClientId: string | null;
-};
-
 type RequestContext = {
   request: Request;
   requestId: string;
@@ -163,6 +151,24 @@ const embeddingsEnabled = (Deno.env.get('MEMORY_EMBEDDINGS') ?? 'on').trim().toL
 
 const db = createClient(supabaseUrl ?? '', serverKey?.key ?? '', {
   auth: { persistSession: false },
+});
+const authenticate = createAuthenticator({
+  bootstrapToken,
+  backend: {
+    findClient: (tokenHash) =>
+      db.from('memory_clients')
+        .select('id, name, token_prefix, allowed_namespaces, permissions, expires_at, revoked_at')
+        .eq('token_hash', tokenHash)
+        .maybeSingle(),
+    recordClientUse: (id) => db.from('memory_clients').update({ last_used_at: new Date().toISOString() }).eq('id', id),
+    getUser: (token) => db.auth.getUser(token),
+    findGrant: (userId) =>
+      db.from('memory_oauth_grants')
+        .select('id, name, allowed_namespaces, permissions, expires_at, revoked_at')
+        .eq('user_id', userId)
+        .maybeSingle(),
+    recordGrantUse: (id) => db.from('memory_oauth_grants').update({ last_used_at: new Date().toISOString() }).eq('id', id),
+  },
 });
 const model = new Supabase.ai.Session('gte-small');
 const embeddingAdapter = createGteSmallAdapter(model, embedChunksPerText);
@@ -215,13 +221,13 @@ Deno.serve(async (request) => {
     return json({ ok: false, error: 'origin_not_allowed' }, 403, request);
   }
 
-  const caller = await authenticate(request.headers.get('authorization'));
-  if (!caller) return json({ ok: false, error: 'unauthorized' }, 401, request);
+  const auth = await authenticate(request.headers.get('authorization'));
+  if (!auth.ok) return json({ ok: false, error: auth.error }, AUTH_FAILURE_STATUS[auth.error], request);
 
   const context: RequestContext = {
     request,
     requestId: crypto.randomUUID(),
-    caller,
+    caller: auth.caller,
     embedCostLeft: embedCostPerRequest,
   };
   let body: RequestBody;
@@ -1405,67 +1411,6 @@ async function handleSecretRetire(context: RequestContext, input: RequestBody) {
   if (error) throw new ApiError('secret_retire_failed', 500);
 
   return json({ ok: true, namespace, name }, 200, context.request);
-}
-
-async function authenticate(header: string | null): Promise<Caller | null> {
-  const token = bearerToken(header);
-  if (!token) return null;
-
-  const tokenHash = await sha256Hex(token);
-  if (bootstrapToken) {
-    const bootstrapHash = await sha256Hex(bootstrapToken);
-    if (timingSafeEqualHex(tokenHash, bootstrapHash)) {
-      return {
-        id: null,
-        name: 'bootstrap-admin',
-        tokenPrefix: token.slice(0, 8),
-        allowedNamespaces: ['*'],
-        permissions: ['*'],
-        expiresAt: null,
-        authMode: 'bootstrap',
-        dbClientId: null,
-      };
-    }
-  }
-
-  const { data, error } = await db.from('memory_clients')
-    .select('id, name, token_prefix, allowed_namespaces, permissions, expires_at, revoked_at')
-    .eq('token_hash', tokenHash)
-    .maybeSingle();
-  if (!error && data && !data.revoked_at && (!data.expires_at || new Date(data.expires_at).getTime() > Date.now())) {
-    const used = await db.from('memory_clients').update({ last_used_at: new Date().toISOString() }).eq('id', data.id);
-    if (used.error) return null;
-    return {
-      id: data.id,
-      name: data.name,
-      tokenPrefix: data.token_prefix,
-      allowedNamespaces: data.allowed_namespaces,
-      permissions: data.permissions,
-      expiresAt: data.expires_at,
-      authMode: 'scoped',
-      dbClientId: data.id,
-    };
-  }
-
-  const auth = await db.auth.getUser(token);
-  if (auth.error || !auth.data.user) return null;
-  const grant = await db.from('memory_oauth_grants')
-    .select('id, name, allowed_namespaces, permissions, expires_at, revoked_at')
-    .eq('user_id', auth.data.user.id).maybeSingle();
-  if (grant.error || !grant.data || grant.data.revoked_at) return null;
-  if (grant.data.expires_at && new Date(grant.data.expires_at).getTime() <= Date.now()) return null;
-  const used = await db.from('memory_oauth_grants').update({ last_used_at: new Date().toISOString() }).eq('id', grant.data.id);
-  if (used.error) return null;
-  return {
-    id: grant.data.id,
-    name: grant.data.name,
-    tokenPrefix: `oauth:${auth.data.user.id.slice(0, 8)}`,
-    allowedNamespaces: grant.data.allowed_namespaces,
-    permissions: grant.data.permissions,
-    expiresAt: grant.data.expires_at,
-    authMode: 'oauth',
-    dbClientId: null,
-  };
 }
 
 // Every embedding goes through here so one request never asks the model for

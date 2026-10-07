@@ -77,6 +77,24 @@ for `secret_store` and an `event_append` without an `external_id`. The bundled
 client retries twice. If 546s are frequent, lower
 `MEMORY_EMBED_CHARS_PER_REQUEST` to `1800`, or set `MEMORY_EMBEDDINGS=off`.
 
+## HTTP 503 `auth_unavailable`
+
+`{"ok":false,"error":"auth_unavailable"}` means the function could not check the
+token: the lookup in `memory_clients` failed, or, for an OAuth token, Supabase
+Auth or the `memory_oauth_grants` query did. It is not a verdict on the token. A
+wrong, revoked or expired token still gets 401, and only after a lookup that
+answered. No action ran, so the request is safe to send again, and the bundled
+client retries twice.
+
+The function log says what failed: `auth lookup failed` with the `source`
+(`memory_clients`, `memory_oauth_grants` or `auth_server`) and the database code
+or HTTP status, never the token. If it persists, the database or Auth is
+unreachable from the function, or the server key has lost access to the table.
+
+Recording `last_used_at` is best-effort. If that write fails, the request still
+succeeds, the log says `auth last-use write failed`, and `last_used_at` is older
+than the token's real last use.
+
 ## Provision A Client
 
 ```bash
@@ -310,7 +328,9 @@ If a client token leaks:
 
 `npm run test:service` exercises the local Edge Function and database, including
 failed replacement writes, missing-chunk repair, concurrent retries, full list
-content, context budgets, byte caps, and authoritative vector reindexing. It
+content, context budgets, byte caps, authoritative vector reindexing, and a
+failed credential lookup (503) against a refused token (401) for scoped tokens
+and OAuth grants. It
 creates temporary local credentials and removes its test records afterwards.
 Start a disposable local stack first:
 

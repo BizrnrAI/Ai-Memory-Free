@@ -1,6 +1,6 @@
 {
   "name": "ai-memory-free",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "private": true,
   "description": "A zero-cost, model-agnostic SSOT memory system with Supabase, pgvector, Edge Functions, evals, and MCP integration.",
   "license": "MIT",

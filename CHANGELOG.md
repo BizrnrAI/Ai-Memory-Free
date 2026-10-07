@@ -3,10 +3,39 @@
 Notable changes are documented here. Versions follow semantic versioning after the
 first public release.
 
-## Unreleased
+## 1.4.1 - 2026-10-06
+
+No migration. Redeploy the `memory` function, and `mcp` if you use remote MCP.
+
+### Fixed
+
+- A token lookup that failed was answered `401 unauthorized`, exactly like a
+  wrong or revoked token. Observed in a hosted deployment: during a backend
+  stall a valid scoped token got a 401 after about 20 seconds and worked again
+  seconds later, and callers that rightly do not retry a 401 failed hard. A
+  lookup that errors is now answered `503 auth_unavailable`, which the bundled
+  client and the remote MCP function already retry. 401 is kept for a lookup
+  that completed and found no token, or a revoked or expired one.
+- The same rule holds for OAuth grants: a failed `memory_oauth_grants` query,
+  or a Supabase Auth server that could not answer, is 503 and not 401. Remote
+  MCP passes it on as a 503 with no OAuth challenge, so a client keeps its
+  token.
+- A failure to record `last_used_at` rejected an otherwise valid token with a
+  401. Recording last use is now best-effort: the failure is logged and the
+  request proceeds.
+
+### Changed
+
+- A revoked or expired scoped token is refused on its own row, without also
+  asking Supabase Auth about it.
+- The function logs `auth lookup failed` and `auth last-use write failed` with
+  the source and the database code or HTTP status, never the token.
 
 ### Documentation
 
+- `auth_unavailable` and `rate_limit_unavailable` are listed with the error
+  codes, with what each 503 means for a caller; OPERATIONS explains how to read
+  one in the function log.
 - The replication checklist applies every migration in `supabase/migrations/`
   instead of naming the first five, and points at the decision about the
   scheduled decay and expiry jobs.
@@ -23,6 +52,10 @@ first public release.
 
 - Dependabot leaves `@types/node` major versions alone: they follow the Node
   version CI runs.
+- `npm run test:service` exercises both authentication paths against the local
+  stack, including a signed-in OAuth user, and reads the stack's publishable
+  key from `supabase status`.
+- Tests read the release version from `protocol.ts` instead of restating it.
 
 ## 1.4.0 - 2026-10-06
 

@@ -40,6 +40,9 @@ MCP_AUTHORIZATION_SERVER=https://PROJECT.supabase.co/auth/v1
 Deploy with `supabase functions deploy mcp --no-verify-jwt`. Custom validation is
 required because the function must return MCP authorization discovery responses.
 An absent, invalid, expired, revoked, or ungranted OAuth token receives 401.
+If the memory service could not check the token (`auth_unavailable`), the
+function answers 503 `memory_service_unavailable` without a challenge, so the
+client keeps its token and tries again.
 
 Supabase Auth is the authorization server; the MCP function is only the protected
 resource and protocol adapter. Never replace this flow with a shared remote bearer
