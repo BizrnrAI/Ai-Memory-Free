@@ -10,6 +10,8 @@ first public release.
   metrics separately from fixture pass rate.
 - Context bundles include later evidence that fits and flag clipped content.
 - Vault reads distinguish a missing credential from an unavailable value.
+- OAuth client tokens use Supabase UserInfo. Deployments can require a
+  resource-specific audience before applying user grants.
 - Vector search and compaction work with pgvector in `public` or `extensions`.
   Apply the additive search-path migration before redeploying the functions.
 - Refresh the SDKs, lockfiles and CI toolchain, including Node 26 LTS and

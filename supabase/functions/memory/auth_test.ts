@@ -3,6 +3,7 @@ import {
   authServerUnavailable,
   createAuthenticator,
   credentialActive,
+  fetchOAuthUser,
   lookupOutcome,
   type AuthBackend,
   type ClientRow,
@@ -31,13 +32,14 @@ const past = '2000-01-01T00:00:00Z';
 const refused = { data: { user: null }, error: { status: 403 } };
 
 // A healthy backend with no credentials in it; each test replaces what it needs.
-function fixture(overrides: Partial<AuthBackend> = {}, bootstrapToken?: string) {
+function fixture(overrides: Partial<AuthBackend> = {}, bootstrapToken?: string, oauthAudience?: string) {
   const calls: string[] = [];
   const reports: Array<{ event: string; detail: Record<string, unknown> }> = [];
   const backend: AuthBackend = {
     findClient: () => Promise.resolve({ data: null, error: null }),
     recordClientUse: () => Promise.resolve({ error: null }),
     getUser: () => Promise.resolve(refused),
+    getOAuthUser: () => Promise.resolve(refused),
     findGrant: () => Promise.resolve({ data: null, error: null }),
     recordGrantUse: () => Promise.resolve({ error: null }),
     ...overrides,
@@ -51,6 +53,7 @@ function fixture(overrides: Partial<AuthBackend> = {}, bootstrapToken?: string) 
   ])) as AuthBackend;
   const authenticate = createAuthenticator({
     bootstrapToken,
+    oauthAudience,
     backend: counted,
     report: (event, detail) => reports.push({ event, detail }),
   });
@@ -198,6 +201,45 @@ Deno.test('an OAuth token is granted by its grant, and refused only on evidence'
     const refusedGrant = await authenticate('oauth-test-token');
     assert(!refusedGrant.ok && refusedGrant.error === 'unauthorized', JSON.stringify(refusedGrant));
     assertEquals(calls.join(','), 'findClient,getUser,findGrant');
+  }
+});
+
+Deno.test('OAuth client tokens use UserInfo and can be bound to the memory resource', async () => {
+  const audience = 'https://memory.example.test/mcp';
+  const { authenticate, calls } = fixture({
+    getOAuthUser: () => Promise.resolve({ data: { user }, error: null }),
+    findGrant: () => Promise.resolve({ data: grant, error: null }),
+  }, undefined, audience);
+  const makeToken = (claims: Record<string, unknown>) =>
+    `header.${btoa(JSON.stringify(claims)).replace(/=+$/, '')}.signature`;
+
+  const session = await authenticate(makeToken({ aud: audience }));
+  assert(!session.ok && session.error === 'unauthorized');
+  assertEquals(calls.splice(0).join(','), 'findClient');
+  const wrong = await authenticate(makeToken({ client_id: 'test-client', aud: 'https://other.example.test' }));
+  assert(!wrong.ok && wrong.error === 'unauthorized');
+  assertEquals(calls.splice(0).join(','), 'findClient,getOAuthUser');
+  const accepted = await authenticate(makeToken({ client_id: 'test-client', aud: [audience] }));
+  assert(accepted.ok && accepted.caller.authMode === 'oauth');
+  assertEquals(calls.join(','), 'findClient,getOAuthUser,findGrant,recordGrantUse');
+});
+
+Deno.test('OAuth UserInfo verifies through project Auth and preserves refusal and outage statuses', async () => {
+  const project = 'https://supabase.example.test';
+  const verified = await fetchOAuthUser(project, 'test-api-key', 'test-token', (input, init) => {
+    assertEquals(String(input), `${project}/auth/v1/oauth/userinfo`);
+    assertEquals(new Headers(init?.headers).get('authorization'), 'Bearer test-token');
+    assertEquals(init?.redirect, 'error');
+    return Promise.resolve(Response.json({ sub: user.id, email: 'discard@example.test' }));
+  });
+  assertEquals(verified.data.user?.id, user.id);
+  assertEquals(JSON.stringify(verified.data.user), JSON.stringify(user));
+
+  for (const status of [401, 503]) {
+    const failure = await fetchOAuthUser(project, 'test-api-key', 'test-token', () =>
+      Promise.resolve(new Response(null, { status })));
+    assertEquals(failure.error?.status, status);
+    assertEquals(failure.data.user, null);
   }
 });
 

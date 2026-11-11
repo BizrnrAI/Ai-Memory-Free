@@ -29,6 +29,7 @@ export const AUTH_FAILURE_STATUS: Record<AuthFailure, number> = {
 type QueryError = { code?: string | null };
 type Lookup<Row> = { data: Row | null; error: QueryError | null };
 type Written = { error: QueryError | null };
+type UserLookup = { data: { user: { id: string } | null }; error: { status?: number } | null };
 
 type CredentialRow = {
   id: string;
@@ -45,7 +46,8 @@ export type GrantRow = CredentialRow;
 export type AuthBackend = {
   findClient(tokenHash: string): PromiseLike<Lookup<ClientRow>>;
   recordClientUse(id: string): PromiseLike<Written>;
-  getUser(token: string): PromiseLike<{ data: { user: { id: string } | null }; error: { status?: number } | null }>;
+  getUser(token: string): PromiseLike<UserLookup>;
+  getOAuthUser(token: string): PromiseLike<UserLookup>;
   findGrant(userId: string): PromiseLike<Lookup<GrantRow>>;
   recordGrantUse(id: string): PromiseLike<Written>;
 };
@@ -85,13 +87,48 @@ export function authServerUnavailable(error: { status?: number }) {
   return !refused;
 }
 
+function jwtPayload(token: string): { client_id?: unknown; aud?: unknown } {
+  const parts = token.split('.');
+  if (parts.length !== 3) return {};
+  try {
+    const bytes = Uint8Array.from(atob(parts[1].replaceAll('-', '+').replaceAll('_', '/')), (c) => c.charCodeAt(0));
+    const payload: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    if (payload && typeof payload === 'object' && !Array.isArray(payload)) return payload;
+  } catch { /* An unparseable token has no OAuth claims. */ }
+  return {};
+}
+
+/** Current Supabase Auth accepts OAuth client tokens at UserInfo rather than /user. */
+export async function fetchOAuthUser(
+  projectUrl: string, apiKey: string, token: string, fetchImpl = fetch,
+): Promise<UserLookup> {
+  const failure = (status?: number): UserLookup => ({ data: { user: null }, error: { status } });
+  try {
+    const response = await fetchImpl(`${projectUrl.replace(/\/+$/, '')}/auth/v1/oauth/userinfo`, {
+      headers: { apikey: apiKey, authorization: `Bearer ${token}` },
+      redirect: 'error',
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!response.ok) {
+      await response.body?.cancel();
+      return failure(response.status);
+    }
+    const body = await response.json();
+    if (typeof body?.sub !== 'string' || !body.sub) return failure(502);
+    return { data: { user: { id: body.sub } }, error: null };
+  } catch {
+    return failure();
+  }
+}
+
 export function createAuthenticator(options: {
   bootstrapToken?: string | null;
+  oauthAudience?: string;
   backend: AuthBackend;
   /** Told about backend failures. Receives database codes and statuses, never token material. */
   report?: (event: string, detail: Record<string, unknown>) => void;
 }) {
-  const { bootstrapToken, backend } = options;
+  const { bootstrapToken, oauthAudience, backend } = options;
   const report = options.report ??
     ((event, detail) => console.error(`[ai-memory-free] ${event}`, detail));
 
@@ -157,13 +194,21 @@ export function createAuthenticator(options: {
       };
     }
 
-    // Not a scoped client token: it may be an OAuth access token with a grant.
-    const auth = await backend.getUser(token);
+    // Unverified claims only choose the Auth endpoint. Supabase must verify
+    // this same bearer before we use any claim or look up a grant.
+    const claims = jwtPayload(token);
+    const oauthClient = typeof claims.client_id === 'string' && claims.client_id.length > 0;
+    if (oauthAudience && !oauthClient) return { ok: false, error: 'unauthorized' };
+    const auth = await (oauthClient ? backend.getOAuthUser(token) : backend.getUser(token));
     if (auth.error && authServerUnavailable(auth.error)) {
       return unavailable('auth_server', { status: auth.error.status ?? null });
     }
     const user = auth.error ? null : auth.data.user;
     if (!user) return { ok: false, error: 'unauthorized' };
+    if (oauthAudience && claims.aud !== oauthAudience &&
+        !(Array.isArray(claims.aud) && claims.aud.includes(oauthAudience))) {
+      return { ok: false, error: 'unauthorized' };
+    }
 
     const grant = lookupOutcome(await backend.findGrant(user.id));
     if (grant.state === 'unavailable') return unavailable('memory_oauth_grants', { database_code: grant.code });

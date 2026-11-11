@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { AUTH_FAILURE_STATUS, createAuthenticator, type Caller } from './auth.ts';
+import { AUTH_FAILURE_STATUS, createAuthenticator, fetchOAuthUser, type Caller } from './auth.ts';
 import {
   canonicalSecretName,
   chunksPerText,
@@ -155,6 +155,7 @@ const db = createClient(supabaseUrl ?? '', serverKey?.key ?? '', {
 });
 const authenticate = createAuthenticator({
   bootstrapToken,
+  oauthAudience: Deno.env.get('MEMORY_OAUTH_AUDIENCE')?.trim(),
   backend: {
     findClient: (tokenHash) =>
       db.from('memory_clients')
@@ -163,6 +164,7 @@ const authenticate = createAuthenticator({
         .maybeSingle(),
     recordClientUse: (id) => db.from('memory_clients').update({ last_used_at: new Date().toISOString() }).eq('id', id),
     getUser: (token) => db.auth.getUser(token),
+    getOAuthUser: (token) => fetchOAuthUser(supabaseUrl ?? '', serverKey?.key ?? '', token),
     findGrant: (userId) =>
       db.from('memory_oauth_grants')
         .select('id, name, allowed_namespaces, permissions, expires_at, revoked_at')

@@ -83,10 +83,12 @@ explicitly granted.
 
 ## OAuth For Remote MCP
 
-The optional HTTP MCP function accepts Supabase Auth OAuth 2.1 access tokens, not
-Ai-Memory-Free static remote tokens. The memory API validates the token with
-Supabase Auth, then loads an explicit `memory_oauth_grants` row containing
-namespaces, permissions, expiry, and revocation state.
+The optional HTTP MCP function checks for a Supabase Auth identity with an
+explicit `memory_oauth_grants` row containing namespaces, permissions, expiry,
+and revocation state. The memory API verifies OAuth client tokens at the
+project’s UserInfo endpoint. Set `MEMORY_OAUTH_AUDIENCE` to require that
+the verified token carries both an OAuth client ID and the expected audience.
+See [Remote MCP setup](REMOTE_MCP.md#authorization-architecture).
 
 OAuth identity alone grants nothing. Grant creation remains a reviewed SQL/admin
 operation. Remote MCP never exposes secret actions, and its 401 response advertises
