@@ -36,6 +36,8 @@
 -- 0007 they are taken by deployment-specific migrations. A deployment that
 -- already changed `recall` in one of those can apply this file safely.
 
+set local search_path = public, extensions, pg_temp;
+
 drop function if exists public.recall(vector, text, integer, integer, text);
 
 create function public.recall(
@@ -65,7 +67,7 @@ returns table (
 )
 language sql
 stable
-set search_path = public, pg_temp
+set search_path = public, extensions, pg_temp
 as $$
   with args as (
     select
@@ -205,7 +207,7 @@ returns table (
 )
 language sql
 stable
-set search_path = public, pg_temp
+set search_path = public, extensions, pg_temp
 as $$
   with args as (
     select greatest(1, least(coalesce(match_limit, 8), 50)) as match_limit,

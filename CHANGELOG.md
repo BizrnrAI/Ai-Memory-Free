@@ -3,6 +3,20 @@
 Notable changes are documented here. Versions follow semantic versioning after the
 first public release.
 
+## Unreleased
+
+- Recall, context and document search can skip query embeddings per request.
+  The eval runner compares modes on the same deployment and reports relevance
+  metrics separately from fixture pass rate.
+- Context bundles include later evidence that fits and flag clipped content.
+- Vault reads distinguish a missing credential from an unavailable value.
+- OAuth client tokens use Supabase UserInfo. Deployments can require a
+  resource-specific audience before applying user grants.
+- Vector search and compaction work with pgvector in `public` or `extensions`.
+  Apply the additive search-path migration before redeploying the functions.
+- Refresh the SDKs, lockfiles and CI toolchain, including Node 26 LTS and
+  Supabase CLI v3.
+
 ## 1.4.1 - 2026-10-06
 
 No migration. Redeploy the `memory` function, and `mcp` if you use remote MCP.

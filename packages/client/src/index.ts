@@ -13,9 +13,13 @@ export type RememberInput = {
   external_id?: string;
 };
 
+export type SearchMode = 'auto' | 'keyword';
+export type AppliedSearchMode = 'hybrid' | 'keyword';
+
 export type RecallInput = {
   namespace?: string;
   query: string;
+  search_mode?: SearchMode;
   limit?: number;
   pool?: number;
   track?: boolean;
@@ -23,6 +27,7 @@ export type RecallInput = {
 
 export type ContextInput = {
   query: string;
+  search_mode?: SearchMode;
   namespaces?: string[];
   max_chars?: number;
   /** @deprecated Use max_chars. Retained for compatibility with early adapters. */
@@ -254,6 +259,7 @@ export class MemoryClient {
       embedding_profile: string;
       /** Absent on services older than 1.4.0. */
       embeddings?: 'on' | 'off';
+      search_modes?: SearchMode[];
       limits?: ServiceLimits;
       server_key?: 'secret_keys' | 'service_role' | null;
       modules: Array<{ id: string; version: string; optional: boolean; actions: string[] }>;
@@ -283,7 +289,7 @@ export class MemoryClient {
   }
 
   async recall(input: RecallInput) {
-    return await this.request<{ ok: boolean; results: MemoryRow[]; error?: string }>({
+    return await this.request<{ ok: boolean; results: MemoryRow[]; search_mode?: AppliedSearchMode; error?: string }>({
       action: 'recall',
       ...input,
     });
@@ -419,7 +425,7 @@ export class MemoryClient {
     };
   }
 
-  async searchDocuments(input: Record<string, unknown>) {
+  async searchDocuments(input: Record<string, unknown> & { search_mode?: SearchMode }) {
     return await this.call<Record<string, unknown>>('document_search', input);
   }
 

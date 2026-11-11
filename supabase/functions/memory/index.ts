@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { AUTH_FAILURE_STATUS, createAuthenticator, type Caller } from './auth.ts';
+import { AUTH_FAILURE_STATUS, createAuthenticator, fetchOAuthUser, type Caller } from './auth.ts';
 import {
   canonicalSecretName,
   chunksPerText,
@@ -55,6 +55,7 @@ type RequestBody = {
   namespaces?: string[];
   content?: string;
   query?: string;
+  search_mode?: string;
   kind?: MemoryKind;
   importance?: number;
   source?: string;
@@ -154,6 +155,7 @@ const db = createClient(supabaseUrl ?? '', serverKey?.key ?? '', {
 });
 const authenticate = createAuthenticator({
   bootstrapToken,
+  oauthAudience: Deno.env.get('MEMORY_OAUTH_AUDIENCE')?.trim(),
   backend: {
     findClient: (tokenHash) =>
       db.from('memory_clients')
@@ -162,6 +164,7 @@ const authenticate = createAuthenticator({
         .maybeSingle(),
     recordClientUse: (id) => db.from('memory_clients').update({ last_used_at: new Date().toISOString() }).eq('id', id),
     getUser: (token) => db.auth.getUser(token),
+    getOAuthUser: (token) => fetchOAuthUser(supabaseUrl ?? '', serverKey?.key ?? '', token),
     findGrant: (userId) =>
       db.from('memory_oauth_grants')
         .select('id, name, allowed_namespaces, permissions, expires_at, revoked_at')
@@ -250,9 +253,8 @@ Deno.serve(async (request) => {
       throw new ApiError('unsupported_protocol_version', 409);
     }
     await enforceRateLimit(context, action);
-    const handler = actionHandlers[action];
-    if (!handler) throw new ApiError('unknown_action', 400);
-    return await handler(context, body);
+    if (!Object.hasOwn(actionHandlers, action)) throw new ApiError('unknown_action', 400);
+    return await actionHandlers[action](context, body);
   } catch (error) {
     if (error instanceof ApiError) {
       await audit(context, action, body.namespace, undefined, false, { error: error.code });
@@ -276,6 +278,7 @@ function handleHealth(context: RequestContext) {
     protocol_version: PROTOCOL_VERSION,
     portable_format_version: PORTABLE_VERSION,
     embeddings: embeddingsEnabled ? 'on' : 'off',
+    search_modes: ['auto', 'keyword'],
     embedding_profile: GTE_SMALL_PROFILE.id,
     embedding_model: GTE_SMALL_PROFILE.model,
     embedding_dimensions: GTE_SMALL_PROFILE.dimensions,
@@ -467,7 +470,7 @@ async function handleRecall(context: RequestContext, input: RequestBody) {
   requireAccess(context.caller, 'memory:read', namespace);
   const limit = Math.trunc(clampNumber(input.limit ?? 8, 1, 50));
   const pool = Math.trunc(clampNumber(input.pool ?? 200, 10, 1000));
-  const embedding = await embed(context, query);
+  const embedding = await embedSearchQuery(context, query, input.search_mode);
 
   const { data, error } = await db.rpc('recall', {
     query_embedding: embedding,
@@ -484,7 +487,7 @@ async function handleRecall(context: RequestContext, input: RequestBody) {
     if (bump.error) throw new ApiError('memory_tracking_failed', 500);
   }
   if (auditReads) await audit(context, 'recall', namespace, undefined, true, { result_count: data?.length ?? 0 });
-  return json({ ok: true, results: data ?? [] }, 200, context.request);
+  return json({ ok: true, search_mode: embedding === null ? 'keyword' : 'hybrid', results: data ?? [] }, 200, context.request);
 }
 
 // The whole of a namespace, in a fixed order, a budget-sized page at a time.
@@ -540,7 +543,7 @@ async function handleContext(context: RequestContext, input: RequestBody) {
   } catch {
     throw new ApiError('invalid_context_budget', 400);
   }
-  const embedding = await embed(context, query);
+  const embedding = await embedSearchQuery(context, query, input.search_mode);
   const recalled = await Promise.all(namespaces.map(async (namespace) => {
     const { data, error } = await db.rpc('recall', {
       query_embedding: embedding,
@@ -552,7 +555,9 @@ async function handleContext(context: RequestContext, input: RequestBody) {
     if (error) throw new ApiError('memory_recall_failed', 500);
     return data ?? [];
   }));
-  const ranked = recalled.flat().sort((a, b) => Number(b.final_score) - Number(a.final_score));
+  const ranked = recalled.flat().sort((a, b) =>
+    Number(b.final_score) - Number(a.final_score) || a.id.localeCompare(b.id)
+  );
   const bounded = boundContext(ranked, maxChars);
   const memoryIds = bounded.rows.map((row: { id: string }) => row.id);
 
@@ -562,11 +567,11 @@ async function handleContext(context: RequestContext, input: RequestBody) {
     const [sourceResult, linkResult] = await Promise.all([
       db.from('memory_source_links')
         .select('memory_id, relation, source:memory_sources(id, uri, source_type, title, confidence, observed_at, valid_from, valid_until, last_verified_at)')
-        .in('memory_id', memoryIds),
+        .in('memory_id', memoryIds).order('memory_id').order('source_id').order('relation'),
       db.from('memory_links')
         .select('id, namespace, source_memory_id, target_memory_id, relation, note, created_at')
         .eq('is_active', true)
-        .or(`source_memory_id.in.(${memoryIds.join(',')}),target_memory_id.in.(${memoryIds.join(',')})`),
+        .or(`source_memory_id.in.(${memoryIds.join(',')}),target_memory_id.in.(${memoryIds.join(',')})`).order('id'),
     ]);
     if (!sourceResult.error) sources = sourceResult.data ?? [];
     if (!linkResult.error) relationships = linkResult.data ?? [];
@@ -578,7 +583,7 @@ async function handleContext(context: RequestContext, input: RequestBody) {
       const result = await db.from('memory_events')
         .select('id, namespace, event_type, summary, agent_id, session_id, tool_name, source_system, occurred_at')
         .eq('namespace', namespace)
-        .order('occurred_at', { ascending: false })
+        .order('occurred_at', { ascending: false }).order('id')
         .limit(5);
       if (!result.error) events.push(...(result.data ?? []));
     }
@@ -596,6 +601,7 @@ async function handleContext(context: RequestContext, input: RequestBody) {
     ok: true,
     protocol_version: PROTOCOL_VERSION,
     query,
+    search_mode: embedding === null ? 'keyword' : 'hybrid',
     namespaces,
     memories: bounded.rows,
     sources,
@@ -896,7 +902,7 @@ async function handleDocumentSearch(context: RequestContext, input: RequestBody)
   const namespace = cleanNamespace(input.namespace);
   requireAccess(context.caller, 'memory:read', namespace);
   const query = requiredString(input.query, 'query', 1, 20_000);
-  const embedding = await embed(context, query);
+  const embedding = await embedSearchQuery(context, query, input.search_mode);
   const { data, error } = await db.rpc('recall_document_chunks', {
     query_embedding: embedding,
     query_text: query,
@@ -905,7 +911,7 @@ async function handleDocumentSearch(context: RequestContext, input: RequestBody)
     memory_namespace: namespace,
   });
   if (error) throw new ApiError('document_search_failed', 500);
-  return json({ ok: true, results: data ?? [] }, 200, context.request);
+  return json({ ok: true, search_mode: embedding === null ? 'keyword' : 'hybrid', results: data ?? [] }, 200, context.request);
 }
 
 async function handleDocumentList(context: RequestContext, input: RequestBody) {
@@ -1362,7 +1368,11 @@ async function handleSecretGet(context: RequestContext, input: RequestBody) {
     p_client_id: context.caller.dbClientId,
     p_request_id: context.requestId,
   });
-  if (error || !data?.[0]) throw new ApiError('secret_not_found', 404);
+  // Released migrations signal a missing name with this exact exception.
+  if (error && (error.code !== 'P0001' || error.message !== 'secret_not_found')) {
+    throw new ApiError('secret_unavailable', 503);
+  }
+  if (!data?.[0]) throw new ApiError('secret_not_found', 404);
 
   const decrypted = data[0];
   return json({ ok: true, secret: decrypted }, 200, context.request);
@@ -1411,6 +1421,12 @@ async function handleSecretRetire(context: RequestContext, input: RequestBody) {
   if (error) throw new ApiError('secret_retire_failed', 500);
 
   return json({ ok: true, namespace, name }, 200, context.request);
+}
+
+async function embedSearchQuery(context: RequestContext, query: string, mode: unknown) {
+  if (mode === 'keyword') return null;
+  if (mode !== undefined && mode !== 'auto') throw new ApiError('invalid_search_mode', 400);
+  return await embed(context, query);
 }
 
 // Every embedding goes through here so one request never asks the model for

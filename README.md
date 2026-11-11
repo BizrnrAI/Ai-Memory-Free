@@ -107,7 +107,7 @@ stdio MCP adapter (optional secret tools are off by default)
 ## Quick Start
 
 1. Clone the repository, create a free Supabase project, and install the Supabase
-   CLI:
+   CLI v3:
 
 ```bash
 git clone https://github.com/BizrnrAI/Ai-Memory-Free.git
@@ -124,7 +124,7 @@ npm ci
 
 ```bash
 supabase link --project-ref YOUR_PROJECT_REF
-supabase migration up --linked
+supabase migration up --remote
 ```
 
 For shared or production projects, use your normal controlled migration process.

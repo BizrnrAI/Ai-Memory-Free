@@ -82,20 +82,23 @@ export function splitDocumentText(text: string, maxChars = 1_800, overlap = 180)
 export function boundContext<T extends object>(rows: T[], maxChars: number) {
   const bounded: T[] = [];
   let used = 0;
+  let truncated = false;
   for (const row of rows) {
     const content = (row as { content?: unknown }).content;
     const size = typeof content === 'string' ? content.length : JSON.stringify(row).length;
     if (used + size > maxChars) {
+      truncated = true;
       if (bounded.length === 0 && typeof content === 'string' && maxChars > 0) {
         bounded.push({ ...row, content: content.slice(0, maxChars), content_truncated: true } as T);
         used = maxChars;
+        break;
       }
-      break;
+      continue;
     }
     bounded.push(row);
     used += size;
   }
-  return { rows: bounded, usedChars: used, truncated: bounded.length < rows.length };
+  return { rows: bounded, usedChars: used, truncated };
 }
 
 /** List pages contain complete memories; callers can raise a too-small budget. */

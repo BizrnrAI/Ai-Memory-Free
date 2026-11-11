@@ -105,6 +105,15 @@ Deno.test('remote MCP validates protocol versions, headers, and tool inputs befo
   assert(calls.every((call) => call.action === 'health'));
 });
 
+Deno.test('remote MCP forwards keyword recall without selecting a different action', async () => {
+  const { handler, calls } = fixture();
+  const result = await rpcBody(await handler(request('tools/call', {
+    name: 'memory_recall', arguments: { query: 'q', search_mode: 'keyword' },
+  })));
+  assert(!result.result.isError, JSON.stringify(result));
+  assert(calls.some((call) => call.action === 'recall' && call.search_mode === 'keyword'));
+});
+
 Deno.test('remote MCP finishes resumable documents and keeps metadata objects usable', async () => {
   const { handler, calls } = fixture();
   const result = await rpcBody(await handler(request('tools/call', {

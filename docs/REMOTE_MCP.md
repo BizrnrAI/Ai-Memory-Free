@@ -9,7 +9,7 @@ and never exposes secret tools.
 1. Enable the Supabase Auth OAuth 2.1 server and register the MCP client.
 2. The client completes authorization code + PKCE with Supabase Auth.
 3. The remote MCP resource advertises protected-resource metadata.
-4. The memory API validates the access token with Supabase Auth.
+4. The memory API validates the access token at Supabase Auth’s OAuth UserInfo endpoint.
 5. `memory_oauth_grants` maps that user to explicit namespaces and permissions.
 
 The adapter verifies `health.auth_mode` is exactly `oauth` before every JSON-RPC
@@ -36,6 +36,14 @@ MEMORY_API_URL=https://PROJECT.supabase.co/functions/v1/memory
 MCP_RESOURCE_URL=https://PROJECT.supabase.co/functions/v1/mcp
 MCP_AUTHORIZATION_SERVER=https://PROJECT.supabase.co/auth/v1
 ```
+
+On a shared Supabase Auth project, configure a [custom access token hook](https://supabase.com/docs/guides/auth/oauth-server/token-security#customizing-the-audience-claim)
+to set `aud` to `MCP_RESOURCE_URL` only for your approved MCP OAuth clients.
+Set `MEMORY_OAUTH_AUDIENCE` on the memory function to that same URL, then
+obtain a fresh access token. With that setting, the core requires an OAuth
+`client_id` and an exact audience match before using a user grant. Test one
+approved client and one token issued for another audience. When the setting is
+unset, existing user-level grants also work with ordinary Supabase sessions.
 
 Deploy with `supabase functions deploy mcp --no-verify-jwt`. Custom validation is
 required because the function must return MCP authorization discovery responses.
@@ -72,8 +80,8 @@ The function remains a protected resource. Client registration and RFC 9207
 issuer validation belong to the authorization server and OAuth client.
 
 Compatibility is covered by Deno tests for modern discovery and tool calls,
-legacy initialization, unsupported versions, required headers, OAuth-only
-identity, input validation, and document resumption. Hosted OAuth client testing
+legacy initialization, unsupported versions, required headers, OAuth identity and audience checks,
+input validation, and document resumption. Hosted OAuth client testing
 remains a deployment check.
 
 Official references:

@@ -12,5 +12,12 @@
       "replace-with-memory-id-after-seeding"
     ],
     "notes": "Seed a design decision memory explaining model agnosticism and zero cost."
+  },
+  {
+    "query": "a topic that was never added to this namespace",
+    "namespace": "empty-eval-namespace",
+    "expected_ids": [],
+    "expect_empty": true,
+    "notes": "Use an authorized empty test namespace. This check should return no evidence."
   }
 ]

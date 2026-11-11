@@ -143,10 +143,18 @@ take is set by this CPU limit, not by the vector index.
 
 | Situation | Setting |
 | --- | --- |
-| Hosted Supabase, the default | Leave everything as it is |
+| Hosted Supabase, the default | `search_mode:"auto"` uses hybrid search when embeddings are on |
+| Identifier or keyword-heavy queries, or a retrieval baseline | `search_mode:"keyword"` skips the query embedding for this request |
 | 546 errors are frequent, or reliability matters more than the last few matches | `MEMORY_EMBEDDINGS=off` (keyword-only) |
 | Self-hosted runtime without the CPU limit | Raise `MEMORY_EMBED_CHARS_PER_REQUEST`, up to `14400` for an eight-chunk average |
 | Memories are not in English | Keyword-only is not enough either: Postgres full-text here is configured for English, and so is `gte-small`. Plan a different embedding profile |
+
+The optional `search_mode` request field works in `recall`, `context`, and
+`document_search`, including over MCP. Responses report the applied mode
+(`hybrid` or `keyword`). Use `health.search_modes` to detect support on upgraded
+servers. A keyword request keeps both full-text lists and leaves write-time
+embeddings enabled. Compare modes on the same fixture file with
+[the retrieval eval](OPERATIONS.md#retrieval-eval).
 
 Switching embeddings off and on again is safe. Memories written while they were
 off have no vector and are found by full-text only. After switching back on, an

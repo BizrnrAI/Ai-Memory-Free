@@ -72,6 +72,7 @@ function buildServer() {
     {
       description: 'Recall ranked context from semantic memory. The caller is responsible for synthesis.',
       inputSchema: z.object({
+        search_mode: z.enum(['auto', 'keyword']).optional(),
         query: z.string().min(1).max(20_000),
         namespace: z.string().optional(),
         limit: z.number().int().min(1).max(50).optional(),
@@ -105,6 +106,7 @@ function buildServer() {
     {
       description: 'Build deterministic, budgeted evidence across explicitly authorized namespaces.',
       inputSchema: z.object({
+        search_mode: z.enum(['auto', 'keyword']).optional(),
         query: z.string().min(1).max(20_000),
         namespaces: z.array(z.string()).min(1).max(8).optional(),
         max_chars: z.number().int().min(1000).max(100_000).optional(),
@@ -221,6 +223,7 @@ function buildServer() {
     {
       description: 'Search optional document chunks with the same hybrid retrieval principles.',
       inputSchema: z.object({
+        search_mode: z.enum(['auto', 'keyword']).optional(),
         namespace: z.string().optional(), query: z.string().min(1).max(20_000),
         limit: z.number().int().min(1).max(50).optional(), pool: z.number().int().min(10).max(500).optional(),
       }),

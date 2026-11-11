@@ -240,7 +240,7 @@ returns table (
 )
 language sql
 stable
-set search_path = public, pg_temp
+set search_path = public, extensions, pg_temp
 as $$
   with args as (
     select greatest(1, least(coalesce(match_limit, 8), 50)) as match_limit,
