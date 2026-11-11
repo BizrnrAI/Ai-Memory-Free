@@ -36,6 +36,8 @@ test('local service preserves whole lists, replacement searchability, and recall
   try {
     const health = await client.health();
     assert.equal(health.version, RELEASE_VERSION);
+    assert.deepEqual(health.search_modes, ['auto', 'keyword']);
+    await assert.rejects(client.call('constructor', {}), failsWith('unknown_action', 400));
     const content = 'Searchable standing deployment guidance. '.repeat(40).trim();
     await client.remember({ namespace, content, importance: 1 });
     await client.remember({ namespace, content: 'A short second fact.' });
@@ -48,12 +50,21 @@ test('local service preserves whole lists, replacement searchability, and recall
     const all = await client.listAll({ namespace, max_chars: 1000 });
     assert.equal(all.length, 2);
     assert.equal(all.find((row) => row.content === content)?.content.length, content.length);
-    const context = await client.context({ namespaces: [namespace], query: 'deployment', max_characters: 1000 });
+    const keywordRecall = await client.recall({ namespace, query: 'deployment', search_mode: 'keyword', track: false });
+    assert.equal(keywordRecall.search_mode, 'keyword');
+    assert.equal(keywordRecall.results[0].content, content);
+    await assert.rejects(client.call('recall', { namespace, query: 'deployment', search_mode: 'invalid' }), failsWith('invalid_search_mode', 400));
+    const context = await client.context({ namespaces: [namespace], query: 'deployment', max_characters: 1000, search_mode: 'keyword' });
+    assert.equal(context.search_mode, 'keyword');
+    assert.equal((context.budget as { truncated: boolean }).truncated, true);
     assert((context.budget as { used_chars: number }).used_chars <= 1000);
     await assert.rejects(client.context({ namespaces: [namespace], query: 'deployment', max_characters: 500 }), /invalid_context_budget/);
 
     const old = await client.ingestDocumentFully({ namespace, title: 'Runbook', content: 'Prior release runbook.' });
     const oldId = String(old.document.id);
+    const chunks = await client.searchDocuments({ namespace, query: 'release', search_mode: 'keyword' });
+    assert.equal(chunks.search_mode, 'keyword');
+    assert.equal((chunks.results as Array<{ document_id: string }>)[0].document_id, oldId);
     // Simulate a database chunk-write failure. The old searchable document must survive.
     sql(`create function public.review_fail_chunk() returns trigger language plpgsql as $$
       begin if new.namespace = '${namespace}' and new.content like 'FAIL_CHUNK%' then raise exception 'test chunk failure'; end if; return new; end $$;
@@ -165,11 +176,20 @@ test('local Vault keeps secrets encrypted, scoped, discoverable and coherent dur
     const read = reads[1].secret;
     assert.equal(read.secret, read.version === 3 ? 'version-3' : 'version-1');
     await client.retireSecret('github_api', namespace);
-    await assert.rejects(client.getSecret({ namespace, name: 'github_api' }), /secret_not_found/);
+    await assert.rejects(client.getSecret({ namespace, name: 'github_api' }), failsWith('secret_not_found', 404));
     const retired = await client.listAllSecrets({ namespace, include_retired: true });
     assert(retired.some((entry) => entry.name === 'github_api' && entry.is_active === false));
     await client.storeSecret({ namespace, name: 'github_api', secret: 'reactivated-value' });
     assert.equal((await client.getSecret({ namespace, name: 'github_api' })).secret.version, 2);
+
+    // A registered name whose Vault value cannot be read is a backend failure.
+    const vaultId = sql(`select vault_secret_id from memory_secrets where id='${first.secret.id}'`);
+    sql(`update memory_secrets set vault_secret_id='${randomUUID()}' where id='${first.secret.id}'`);
+    try {
+      await assert.rejects(client.getSecret({ namespace, name: 'github_api' }), failsWith('secret_unavailable', 503));
+    } finally {
+      sql(`update memory_secrets set vault_secret_id='${vaultId}' where id='${first.secret.id}'`);
+    }
     sql(`update memory_clients set expires_at=now()-interval '1 second' where token_hash='${callerHash}'`);
     await assert.rejects(scoped.listSecrets(namespace), /unauthorized/);
     sql(`update memory_clients set expires_at=null, revoked_at=now() where token_hash='${callerHash}'`);

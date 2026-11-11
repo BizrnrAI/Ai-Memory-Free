@@ -262,3 +262,19 @@ environment and credential-type metadata, including legacy entries, without
 indexing Vault values. New credential helpers enforce consistent
 `service.environment.credential_type` identities; complete identities submitted
 through the raw API must match their names. Legacy identifiers remain usable.
+
+## 2026-11-11 - Compare Search Modes on the Same Deployment
+
+Expose keyword search per request so callers can skip embedding an identifier or
+measure the value of embeddings without toggling the service or rebuilding an
+index. Keep the default mode and the existing fusion weights. Correct the
+context budget so an oversized later result does not discard every following
+result. Cover both behaviors with service and budget checks and extend the eval
+fixtures with empty and forbidden-result controls. See
+[Research Review](RESEARCH_REVIEW.md#november-2026-review).
+
+Fix search-path declarations on the original vector routines for fresh installs
+with pgvector already in `extensions`. A new migration updates only the three
+AMF routines on previously migrated installs. It preserves function identities,
+grants, data, extension placement and HNSW settings. The archived Bizrnr
+hardening migrations remain deployment-specific.

@@ -8,7 +8,7 @@ untouched; nothing needs re-embedding.
 1. Apply the two new migrations **first**. The v1.4 function relies on them.
 
    ```bash
-   supabase migration up --linked
+   supabase migration up --remote
    ```
 
    The additive `vault_secret_access_hardening` migration also updates the Vault

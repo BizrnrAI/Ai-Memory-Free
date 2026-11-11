@@ -251,7 +251,7 @@ a written reason in `docs/DECISIONS.md`.
 ```bash
 npm ci
 supabase link --project-ref YOUR_PROJECT_REF
-supabase migration up --linked
+supabase migration up --remote
 npm run token:create -- --name primary-agent --namespaces default \
   --permissions memory:read,memory:write
 # Execute the generated hash-only SQL in the Supabase SQL editor.

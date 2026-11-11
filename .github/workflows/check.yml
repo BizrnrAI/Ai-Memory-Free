@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
       - name: Scan git history for secrets
@@ -32,10 +32,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
         with:
-          node-version: 24
+          node-version: 26
           cache: npm
       - run: npm ci
       - run: npm run check
@@ -45,25 +45,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: denoland/setup-deno@v2
+      - uses: actions/checkout@v7.0.1
+      - uses: denoland/setup-deno@v2.0.5
         with:
-          deno-version: v2.x
+          deno-version: v2.9.8
       - run: deno task check
       - run: deno task test
+      - run: git diff --exit-code -- deno.lock
 
   migrations:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
-      - uses: supabase/setup-cli@v3
+      - uses: actions/checkout@v7.0.1
+      - uses: supabase/setup-cli@v3.2.0
         with:
           # The version the migrations were last verified with.
-          version: 2.117.0
-      - uses: actions/setup-node@v7
+          version: 3.1.0
+      - uses: actions/setup-node@v7.1.0
         with:
-          node-version: 24
+          node-version: 26
           cache: npm
       - run: npm ci
       - name: Apply every migration to a fresh local stack

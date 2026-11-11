@@ -40,7 +40,9 @@ Exact duplicates return the existing row without rewriting frozen importance.
 ### `memory_recall`
 
 Returns ranked raw context. Arguments: `query`, optional `namespace`, `limit`,
-`pool`, and `track`. Set `track:false` for eval/system reads.
+`pool`, `track`, and `search_mode`. Set `track:false` for eval/system reads.
+`search_mode:"keyword"` also works in `memory_context` and
+`memory_document_search` and skips query embeddings for that call.
 
 ### `memory_retire`
 

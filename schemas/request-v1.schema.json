@@ -7,6 +7,7 @@
   "properties": {
     "protocol_version": { "const": "1" },
     "action": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "search_mode": { "enum": ["auto", "keyword"] },
     "namespace": { "type": "string", "pattern": "^[a-zA-Z0-9_.:-]{1,128}$" }
   }
 }

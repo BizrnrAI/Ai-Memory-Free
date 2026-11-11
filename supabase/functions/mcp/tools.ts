@@ -10,6 +10,7 @@ export const tools = [
     namespace: stringSchema(), items: { type: 'array', minItems: 1, maxItems: 50, items: { type: 'object' } },
   })),
   tool('memory_recall', 'Recall ranked evidence from one namespace.', objectSchema(['query'], {
+    search_mode: { type: 'string', enum: ['auto', 'keyword'] },
     query: stringSchema(), namespace: stringSchema(), limit: numberSchema(), pool: numberSchema(), track: booleanSchema(),
   })),
   tool('memory_list', 'Read a namespace in a fixed order, a page at a time; follow next_offset until it is null.', objectSchema([], {
@@ -17,6 +18,7 @@ export const tools = [
     limit: numberSchema(), offset: numberSchema(), max_chars: numberSchema(), include_retired: booleanSchema(),
   })),
   tool('memory_context', 'Build a deterministic, budgeted context bundle across authorized namespaces.', objectSchema(['query'], {
+    search_mode: { type: 'string', enum: ['auto', 'keyword'] },
     query: stringSchema(), namespaces: arraySchema(stringSchema()), max_chars: numberSchema(),
     max_characters: numberSchema(),
     per_namespace_limit: numberSchema(), include_events: booleanSchema(),
@@ -49,6 +51,7 @@ export const tools = [
     media_type: stringSchema(), metadata: { type: 'object' }, supersedes: stringSchema(), replace_same_title: booleanSchema(),
   })),
   tool('memory_document_search', 'Search document chunks with hybrid retrieval.', objectSchema(['query'], {
+    search_mode: { type: 'string', enum: ['auto', 'keyword'] },
     namespace: stringSchema(), query: stringSchema(), limit: numberSchema(), pool: numberSchema(),
   })),
   tool('memory_document_list', 'Page through documents in the optional document/chunk module.', objectSchema([], {

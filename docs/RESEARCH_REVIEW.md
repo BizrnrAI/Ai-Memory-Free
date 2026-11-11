@@ -1,7 +1,7 @@
 # Research Review
 
 Comparison snapshot: 2026-06-22. Security and platform guidance refreshed:
-2026-07-09.
+2026-11-11.
 
 Retrieval was measured on real data in 2026-10; the method, the numbers and the
 alternatives considered are in [RETRIEVAL.md](RETRIEVAL.md).
@@ -32,6 +32,22 @@ Honorable mentions:
   PostgreSQL, pgvector, and Ollama-oriented memory.
 - [upstash/context7](https://github.com/upstash/context7) for MCP-native context
   distribution, though it is documentation/context rather than personal memory.
+
+## November 2026 review
+
+| Source | Pattern reviewed | Application in AMF |
+| --- | --- | --- |
+| [QMD](https://github.com/tobi/qmd#score-normalization--fusion) | Combines lexical and vector ranks, with an additional local model for reranking. | Offer per-query keyword search as a baseline and a low-cost path for known terms. Keep the measured hybrid ranking for general recall. |
+| [OpenViking](https://github.com/volcengine/OpenViking) | Scopes retrieval to a directory and opens detailed evidence progressively. | Keep namespace boundaries explicit. Start with `list` for small project namespaces, use budgeted `context` for selected evidence, and search document chunks for source detail. Context packing now includes later evidence that fits the remaining budget. |
+| [Graphiti](https://github.com/getzep/graphiti#a-framework-for-building-temporal-knowledge-graphs) | Tracks changing facts and keeps provenance back to the source. | Use explicit supersession and existing source validity metadata. Add stale and superseded IDs as regression checks before experimenting with historical queries. |
+| [LongMemEval](https://github.com/xiaowu0162/LongMemEval#-longmemeval-overview) and [Supermemory](https://github.com/supermemoryai/supermemory) | Evaluate retrieval separately from generated answers, including knowledge updates and abstention. | Report fixture pass rate separately from recall, precision and reciprocal rank. Treat known stale or cross-project hits and results from an empty control as failures. Run both modes against the same project-specific fixtures. |
+| [pgvector](https://github.com/pgvector/pgvector#iterative-index-scans) | Iterative scans can recover candidates lost to filtering on shared vector indexes. | Retain the existing per-function setting and regression-test searches after the extension moves out of `public`. |
+
+AMF runs these checks without an LLM judge or a new backend. Upstream benchmark
+scores use different corpora and retrieval settings. For AMF, compare modes on
+the same fixture file and inspect the returned source IDs before tuning ranking.
+See [Retrieval eval](OPERATIONS.md#retrieval-eval) and the
+[existing AMF measurements](RETRIEVAL.md#what-was-measured).
 
 ## Design Takeaways
 

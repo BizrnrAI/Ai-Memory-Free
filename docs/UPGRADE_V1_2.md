@@ -6,7 +6,7 @@ token, and Vault secret.
 1. Back up the database and prove the backup can be read.
 2. Pull the reviewed v1.2 tag and run `npm ci`.
 3. Read migration `0005_v1_2_modular_memory.sql`.
-4. Apply it through `supabase migration up --linked` or your controlled migration
+4. Apply it through `supabase migration up --remote` or your controlled migration
    process. Never use `supabase db push`.
 5. Deploy `memory`; deploy `mcp` only if remote OAuth MCP is wanted.
 6. Run `health` and confirm version `1.2.0`, protocol `1`, and eight modules.

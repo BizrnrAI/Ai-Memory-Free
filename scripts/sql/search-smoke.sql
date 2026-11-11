@@ -1,13 +1,29 @@
--- Checks the search functions against a freshly migrated database. No
--- embeddings are involved: a NULL query vector means "no vector list", so every
--- assertion here is about the full-text lists, the filters and the settings,
--- and the result is the same on every run.
+-- Deterministic full-text, vector, access and upgrade checks on a disposable
+-- local database. Synthetic vectors require no model. Everything rolls back.
 --
---   supabase db start
+--   supabase start
 --   psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -f scripts/sql/search-smoke.sql
 --
--- Everything is rolled back.
 begin;
+
+-- Reproduce a deployment that moved vector out of public and still has the
+-- old per-function paths. Reapply the repair before exercising the routines.
+create schema if not exists extensions;
+do $$
+begin
+  if exists (
+    select 1 from pg_extension e join pg_namespace n on n.oid = e.extnamespace
+    where e.extname = 'vector' and n.nspname <> 'extensions'
+  ) then
+    alter extension vector set schema extensions;
+  end if;
+end
+$$;
+alter function public.recall(extensions.vector, text, integer, integer, text) set search_path = public, pg_temp;
+alter function public.recall_document_chunks(extensions.vector, text, integer, integer, text) set search_path = public, pg_temp;
+alter function public.compact_memories(double precision, interval, text, boolean) set search_path = public, pg_temp;
+\ir ../../supabase/migrations/20261111232321_vector_function_search_path.sql
+set local search_path = public, extensions, pg_temp;
 
 insert into public.memories (namespace, content, kind, source_system, external_id) values
   ('sql-smoke', 'The deploy pipeline publishes on every merge to main.', 'procedure', 'smoke', 'deploy'),
@@ -30,6 +46,7 @@ declare
   top record;
   n integer;
   pgvector integer[];
+  probe vector(384) := array_fill(1::real, array[384])::vector;
 begin
   -- An identifier is found by the all-words list and comes first.
   select * into top from public.recall(null, 'ORDER_EXPORT_V2', 5, 50, 'sql-smoke') limit 1;
@@ -62,6 +79,19 @@ begin
   select count(*) into n from public.recall_document_chunks(null, 'when do we rotate the signing key', 5, 50, 'sql-smoke')
   where title = 'Old runbook';
   assert n = 0, 'a retired document''s chunk was returned';
+
+  update public.memories set embedding = probe, created_at = now() - interval '8 days'
+    where namespace = 'sql-smoke' and external_id in ('export', 'deploy');
+  update public.memory_document_chunks set embedding = probe where namespace = 'sql-smoke';
+
+  -- A stop-word query leaves only the vector list. Both searches and the
+  -- optional maintenance function must resolve the relocated vector operator.
+  select count(*) into n from public.recall(probe, 'the of and', 5, 50, 'sql-smoke');
+  assert n = 2, 'recall could not use the relocated vector extension';
+  select count(*) into n from public.recall_document_chunks(probe, 'the of and', 5, 50, 'sql-smoke');
+  assert n = 1, 'document search could not use the relocated vector extension';
+  select count(*) into n from public.compact_memories(memory_namespace => 'sql-smoke');
+  assert n = 1, 'compaction could not use the relocated vector extension';
 
   -- Recreating a function drops its settings; 0013 must have put this one back.
   select string_to_array(regexp_replace(extversion, '[^0-9.].*$', ''), '.')::int[] into pgvector

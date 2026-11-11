@@ -7,7 +7,7 @@ An agent can recreate the secure no-cost system from this repository alone:
 2. Create a free Supabase project.
 3. Run `npm ci`.
 4. Apply every file in `supabase/migrations/` in filename order with
-   `supabase migration up --linked`. The directory is the list; nothing here
+   `supabase migration up --remote`. The directory is the list; nothing here
    restates it.
 5. Decide on the scheduled jobs before relying on the memory.
    `0002_optional_maintenance.sql` schedules importance decay and the automatic

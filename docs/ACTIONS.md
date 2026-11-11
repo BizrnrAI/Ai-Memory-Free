@@ -127,12 +127,13 @@ model. The TypeScript client's `rememberMany` does the splitting.
 | Field | Type | Rules |
 | --- | --- | --- |
 | `query` | string | required, 1..20000 |
+| `search_mode` | string | `auto` (default) or `keyword`, which skips query embedding |
 | `namespace` | string | optional |
 | `limit` | int | 1..50, default 8 |
 | `pool` | int | candidate pool per retrieval arm, 10..1000, default 200 |
 | `track` | boolean | default true; set `false` for eval/system reads so access counts stay honest |
 
-Returns `results`: ranked rows with `id`, `namespace`, `content`, `kind`,
+Returns the applied `search_mode` (`hybrid` or `keyword`) and `results`: ranked rows with `id`, `namespace`, `content`, `kind`,
 `source`, `tags`, `metadata`, `source_system`, `external_id`,
 `base_importance`, `access_count`, `effective_score`, `rrf_norm`,
 `final_score`, `created_at`, `last_accessed_at`. Three ranked lists are fused
@@ -169,6 +170,7 @@ count as access for ranking.
 | Field | Type | Rules |
 | --- | --- | --- |
 | `query` | string | required, 1..20000 |
+| `search_mode` | string | `auto` (default) or `keyword`, which skips query embedding |
 | `namespaces` | string[] | 1..8 explicit namespaces; falls back to `namespace`, then `["default"]` |
 | `per_namespace_limit` | int | 1..20, default 8 |
 | `max_chars` | int | 1000..100000, default 20000 |
@@ -176,7 +178,7 @@ count as access for ranking.
 | `include_events` | boolean | default false; adds up to 5 recent events per namespace |
 
 Returns a deterministic budgeted bundle: `memories` (merged by `final_score`),
-`sources`, `relationships`, `recent_events`, and
+`sources`, `relationships`, `recent_events`, applied `search_mode`, and
 `budget:{max_chars, used_chars, truncated}`. Wildcard namespaces are never
 inferred.
 
@@ -234,7 +236,9 @@ equal `service.environment.credential_type`. The client provides `formatSecretNa
 ### `secret_get` — `secrets:read`
 
 `namespace` (optional), `name`. Returns the decrypted secret value with its
-metadata. 404 if absent. Decryption is audited.
+metadata. An absent or retired name returns `404 secret_not_found`. If the
+backend cannot read the value, the service returns `503 secret_unavailable`.
+Decryption is audited.
 
 ### `secret_list` — `secrets:list` (plus `secrets:admin` for `include_retired`)
 
@@ -347,7 +351,8 @@ TypeScript client's `ingestDocumentFully` repeats the call for you.
 ### `document_search` — `memory:read`
 
 `query` (required, 1..20000), `namespace`, `limit` (1..50, default 8),
-`pool` (10..500, default 100). Returns hybrid-ranked chunk `results`.
+`pool` (10..500, default 100), and `search_mode` (`auto` or `keyword`).
+Returns ranked chunk `results` and the applied `search_mode`.
 
 ### `document_list` — `memory:read`
 

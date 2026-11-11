@@ -5,7 +5,7 @@
 ```bash
 npm ci
 supabase link --project-ref YOUR_PROJECT_REF
-supabase migration up --linked
+supabase migration up --remote
 supabase functions deploy memory --no-verify-jwt
 ```
 
@@ -299,18 +299,35 @@ Review dry-run pairs before enabling writes or the commented weekly cron.
 
 ## Retrieval Eval
 
-Copy the example fixture to an ignored local path, seed real IDs, and run:
+Copy the example fixture to an ignored local path and seed real IDs. Use a
+scoped eval credential with read access to each test namespace.
 
 ```bash
-MEMORY_EVAL_FIXTURES=eval/fixtures.local.json npm run eval
+export MEMORY_EVAL_FIXTURES=eval/fixtures.local.json
+MEMORY_EVAL_SEARCH_MODE=auto npm run eval
+MEMORY_EVAL_SEARCH_MODE=keyword npm run eval
 ```
 
 Ranking, embedding, chunking, or compaction changes require an updated eval or a
 written reason in `docs/DECISIONS.md`.
 
-v1.2 fixtures may additionally assert forbidden IDs, the expected top ID, and a
-minimum top score. Use these gates for stale/conflicting knowledge and profile
-migrations.
+The default pass-rate gate is 90 percent (`MEMORY_EVAL_THRESHOLD`). A fixture
+passes when all its expected IDs are found and its top-ID and score assertions
+hold. Recall@K is the average fraction of relevant IDs found on each positive
+query, reported alongside mean reciprocal rank and precision@K. Keep stale
+versions and cross-project distractors in `expected_absent_ids`. For an
+authorized empty namespace, use `"expected_ids": [], "expect_empty": true`.
+Either a forbidden hit or an unexpected result in an empty control fails the
+run regardless of the pass-rate threshold.
+
+CI verifies Node 26 LTS, Deno 2.9.8 and Supabase CLI 3.1.0. On CLI v3, use
+`--remote` for migrations against a linked hosted project, and use `--yes`
+for an unattended hosted mutation after reviewing its target and changes.
+PostgreSQL extensions (including pgvector, Vault and pg_cron) and the
+`gte-small` model come from the Supabase installation. Check the available
+extension versions before upgrading a deployment. The vector search-path
+migration preserves the installed extension versions and existing indexes.
+See [the Supabase CLI v3 migration guide](https://supabase.com/docs/guides/local-development/cli/migrating-to-v3).
 
 ## Incident Checklist
 

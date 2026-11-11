@@ -36,7 +36,7 @@ returns table (
   cosine        double precision
 )
 language plpgsql
-set search_path = public, pg_temp
+set search_path = public, extensions, pg_temp
 as $$
 declare
   r record;

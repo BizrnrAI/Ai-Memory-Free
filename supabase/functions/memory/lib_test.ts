@@ -143,6 +143,12 @@ Deno.test('context budgets preserve the best first result and report truncation'
   const oversized = boundContext([{ content: 'x'.repeat(100) }], 12);
   assertEquals(oversized.rows[0].content, 'x'.repeat(12));
   assertEquals(oversized.usedChars, 12);
+  assert(oversized.truncated);
+
+  const laterFits = boundContext([{ content: 'first' }, { content: 'too large' }, { content: 'last' }], 9);
+  assertEquals(laterFits.rows, [{ content: 'first' }, { content: 'last' }]);
+  assertEquals(laterFits.usedChars, 9);
+  assert(laterFits.truncated);
 });
 
 Deno.test('context budgets accept the documented field and the legacy long-form alias', () => {

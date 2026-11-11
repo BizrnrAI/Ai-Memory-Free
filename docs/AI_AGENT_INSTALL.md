@@ -67,7 +67,7 @@ Use this when the user has no existing Ai-Memory-Free API.
 5. Apply migrations through the reviewed migration path:
 
    ```bash
-   supabase migration up --linked
+   supabase migration up --remote
    ```
 
    Do not use `supabase db push` as an unreviewed shortcut. Do not apply migrations
