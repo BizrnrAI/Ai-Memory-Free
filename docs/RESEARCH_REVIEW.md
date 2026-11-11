@@ -1,7 +1,6 @@
 # Research Review
 
-Comparison snapshot: 2026-06-22. Security and platform guidance refreshed:
-2026-11-11.
+Original comparison: 2026-06-22. Follow-up review: 2026-11-11.
 
 Retrieval was measured on real data in 2026-10; the method, the numbers and the
 alternatives considered are in [RETRIEVAL.md](RETRIEVAL.md).

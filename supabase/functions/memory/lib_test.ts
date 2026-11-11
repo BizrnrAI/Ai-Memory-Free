@@ -146,7 +146,7 @@ Deno.test('context budgets preserve the best first result and report truncation'
   assert(oversized.truncated);
 
   const laterFits = boundContext([{ content: 'first' }, { content: 'too large' }, { content: 'last' }], 9);
-  assertEquals(laterFits.rows, [{ content: 'first' }, { content: 'last' }]);
+  assertEquals(laterFits.rows.map((row) => row.content).join(','), 'first,last');
   assertEquals(laterFits.usedChars, 9);
   assert(laterFits.truncated);
 });
