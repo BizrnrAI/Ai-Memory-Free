@@ -343,6 +343,11 @@ If a client token leaks:
 
 ## Local Regression Checks
 
+Use `npm ci` for Node and `deno task check` plus `deno task test` for Edge
+code. Deno resolves packages from its global cache, so it leaves npm’s
+`node_modules` tree alone. Run `npm audit` and `deno audit --lock=deno.lock`
+to check both dependency graphs.
+
 `npm run test:service` exercises the local Edge Function and database, including
 failed replacement writes, missing-chunk repair, concurrent retries, full list
 content, context budgets, byte caps, authoritative vector reindexing, and a

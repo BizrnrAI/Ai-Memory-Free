@@ -52,6 +52,7 @@ jobs:
       - run: deno task check
       - run: deno task test
       - run: git diff --exit-code -- deno.lock
+      - run: deno audit --lock=deno.lock
 
   migrations:
     runs-on: ubuntu-latest
